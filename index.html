@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Strip Waveguide 3D Simulator</title>
+  <link rel="stylesheet" href="style.css">
+  <!-- Three.js 및 OrbitControls CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+</head>
+<body>
+
+  <div id="canvas-container"></div>
+
+  <!-- 컨트롤 & 정보 패널 -->
+  <div id="ui-panel">
+    <h2>Strip Waveguide 3D</h2>
+    
+    <div class="control-group">
+      <label for="width-slider">
+        Core Width (w): <span id="width-val">450</span> nm
+      </label>
+      <input type="range" id="width-slider" min="200" max="1000" step="10" value="450">
+    </div>
+
+    <div class="control-group">
+      <label for="height-slider">
+        Core Height (h): <span id="height-val">220</span> nm
+      </label>
+      <input type="range" id="height-slider" min="100" max="500" step="10" value="220">
+    </div>
+
+    <div class="control-group">
+      <label for="length-slider">
+        Core Length (L): <span id="length-val">3000</span> nm
+      </label>
+      <input type="range" id="length-slider" min="1000" max="8000" step="100" value="3000">
+    </div>
+
+    <div class="legend">
+      <div class="legend-item">
+        <div class="color-box" style="background: #38bdf8;"></div>
+        <span>Silicon Core (n ≈ 3.45)</span>
+      </div>
+      <div class="legend-item">
+        <div class="color-box" style="background: rgba(148, 163, 184, 0.4);"></div>
+        <span>SiO₂ Substrate / BOX (n ≈ 1.45)</span>
+      </div>
+    </div>
+  </div>
+
+  <script src="main.js"></script>
+</body>
+</html>
