@@ -99,12 +99,9 @@ axisScene.add(axisGizmo);
 const SCALE = 0.001;
 
 let params = {
-  waveguideCount: 1,  // 도파로 개수 (1 또는 2)
-  gap: 200,           // nm (도파로 1과 2 사이의 간격)
   nCore: 3.45,
   nCladd: 1.45,
   core1: { w: 450, h: 220, l: 3000 },
-  core2: { w: 450, h: 220, l: 3000 },
   sub: { w: 2500, h: 400, l: 3000 },
   top: { w: 2500, h: 600, l: 3000 },
   laser: {
@@ -116,22 +113,15 @@ let params = {
   }
 };
 
-// Material
+// Material 설정 (도파로 1 및 일반 코어 공통 파란색)
 const coreMat = new THREE.MeshStandardMaterial({
   color: 0x38bdf8,
   roughness: 0.2,
   metalness: 0.8,
   emissive: 0x0284c7,
-  emissiveIntensity: 0.3
-});
-
-// 도파로 2 메쉬용 동일 재질
-const core2Mat = new THREE.MeshStandardMaterial({
-  color: 0xf43f5e, // 도파로 2 시각적 구분을 위한 약간의 로즈 톤 색상
-  roughness: 0.2,
-  metalness: 0.8,
-  emissive: 0xe11d48,
-  emissiveIntensity: 0.3
+  emissiveIntensity: 0.3,
+  transparent: true,
+  opacity: 0.75
 });
 
 const subMat = new THREE.MeshStandardMaterial({
@@ -144,65 +134,46 @@ const subMat = new THREE.MeshStandardMaterial({
 const topMat = new THREE.MeshStandardMaterial({
   color: 0x94a3b8,
   transparent: true,
-  opacity: 0.25,
+  opacity: 0.2,
   roughness: 0.1
 });
 
 const wireframeMat = new THREE.LineBasicMaterial({ color: 0xf8fafc, linewidth: 1 });
 
-let core1Mesh, core2Mesh, subMesh, topMesh, laserBeamMesh, laserBeamMat;
+// 도파로 내부 빛 진행(Propagation) 시각화 재질
+const guidedLightMat = new THREE.MeshStandardMaterial({
+  color: 0x38bdf8,
+  emissive: 0x38bdf8,
+  emissiveIntensity: 1.2,
+  transparent: true,
+  opacity: 0.85
+});
+
+let core1Mesh, subMesh, topMesh, laserBeamMesh, laserBeamMat;
+let lightPropagationGroup; // 도파로 내부 빛 진행 메쉬 그룹
 
 // 4. 3D 메쉬 생성
 function buildStructure() {
   if (core1Mesh) { scene.remove(core1Mesh); core1Mesh.geometry.dispose(); }
-  if (core2Mesh) { scene.remove(core2Mesh); core2Mesh.geometry.dispose(); }
   if (subMesh) { scene.remove(subMesh); subMesh.geometry.dispose(); }
   if (topMesh) { scene.remove(topMesh); topMesh.geometry.dispose(); }
   if (laserBeamMesh) { scene.remove(laserBeamMesh); laserBeamMesh.geometry.dispose(); }
+  if (lightPropagationGroup) { scene.remove(lightPropagationGroup); }
 
   const c1W = params.core1.w * SCALE;
   const c1H = params.core1.h * SCALE;
   const c1L = params.core1.l * SCALE;
 
-  const gap = params.gap * SCALE;
-
-  // 도파로 위치 계산 (도파로 1은 왼쪽, 도파로 2는 오른쪽 배치)
-  let posX1 = 0;
-  let posX2 = 0;
-
-  if (params.waveguideCount === 2) {
-    const c2W = params.core2.w * SCALE;
-    // 두 코어 중심간의 거리 = w1/2 + gap + w2/2
-    const totalSpan = c1W + gap + c2W;
-    posX1 = -(totalSpan / 2) + (c1W / 2);
-    posX2 = (totalSpan / 2) - (c2W / 2);
-  }
-
-  // A. Core 1
+  // A. Core 1 (도파로 1)
   const core1Geo = new THREE.BoxGeometry(c1W, c1H, c1L);
   core1Mesh = new THREE.Mesh(core1Geo, coreMat);
-  core1Mesh.position.set(posX1, c1H / 2, 0);
+  core1Mesh.position.set(0, c1H / 2, 0);
 
   const wfGeo1 = new THREE.EdgesGeometry(core1Geo);
   core1Mesh.add(new THREE.LineSegments(wfGeo1, wireframeMat));
   scene.add(core1Mesh);
 
-  // B. Core 2 (도파로 2개 모드일 경우 동일한 Y 평면 상에 독립적 크기로 배치)
-  if (params.waveguideCount === 2) {
-    const c2W = params.core2.w * SCALE;
-    const c2H = params.core2.h * SCALE;
-    const c2L = params.core2.l * SCALE;
-
-    const core2Geo = new THREE.BoxGeometry(c2W, c2H, c2L);
-    core2Mesh = new THREE.Mesh(core2Geo, core2Mat);
-    core2Mesh.position.set(posX2, c2H / 2, 0);
-
-    const wfGeo2 = new THREE.EdgesGeometry(core2Geo);
-    core2Mesh.add(new THREE.LineSegments(wfGeo2, wireframeMat));
-    scene.add(core2Mesh);
-  }
-
-  // C. Substrate
+  // B. Substrate
   const subW = params.sub.w * SCALE;
   const subH = params.sub.h * SCALE;
   const subL = params.sub.l * SCALE;
@@ -210,7 +181,7 @@ function buildStructure() {
   subMesh.position.set(0, -subH / 2, 0);
   scene.add(subMesh);
 
-  // D. Upper Cladding
+  // C. Upper Cladding
   const topW = params.top.w * SCALE;
   const topH = params.top.h * SCALE;
   const topL = params.top.l * SCALE;
@@ -218,13 +189,16 @@ function buildStructure() {
   topMesh.position.set(0, topH / 2, 0);
   scene.add(topMesh);
 
-  // E. 레이저 빔 (항상 도파로 1의 입구 중앙에 조사)
-  buildStraightLaserBeam(c1W, c1H, c1L, posX1);
-  
+  // D. 입사 레이저 빔
+  buildStraightLaserBeam(c1W, c1H, c1L, 0);
+
+  // E. 도파로 내부 빛 전파(Propagation) 파동 메쉬 구축
+  buildLightPropagation(c1W, c1H, c1L);
+
   drawSpectrumGraph();
 }
 
-// 레이저 빔 생성 (도파로 1의 입구에 조준)
+// 레이저 빔 생성
 function buildStraightLaserBeam(c1W, c1H, c1L, posX1) {
   const beamLength = 1.5; 
   const beamRadius = 0.04;
@@ -251,6 +225,28 @@ function buildStraightLaserBeam(c1W, c1H, c1L, posX1) {
   laserBeamMesh.rotation.set(-radX, radY, 0);
 
   scene.add(laserBeamMesh);
+}
+
+// 코어 내부 전파 파동 시각화 메쉬 구축
+function buildLightPropagation(c1W, c1H, c1L) {
+  lightPropagationGroup = new THREE.Group();
+
+  const numPackets = 12; // 빛 파동 패킷 개수
+  const packetRadius = Math.min(c1W, c1H) * 0.35;
+
+  for (let i = 0; i < numPackets; i++) {
+    const geo = new THREE.CylinderGeometry(packetRadius, packetRadius, 0.08, 16);
+    geo.rotateX(Math.PI / 2); // Z축 방향 배치
+    const mesh = new THREE.Mesh(geo, guidedLightMat);
+    
+    // Z축 진행 방향으로 일정 이격 배치
+    const initialZ = -c1L / 2 + (c1L / numPackets) * i;
+    mesh.position.set(0, c1H / 2, initialZ);
+    
+    lightPropagationGroup.add(mesh);
+  }
+
+  scene.add(lightPropagationGroup);
 }
 
 // 5. 스펙트럼 Canvas 그래프
@@ -314,28 +310,7 @@ function drawSpectrumGraph() {
 
 buildStructure();
 
-// 6. 도파로 개수 변경 토글 함수
-window.setWaveguideCount = function(count) {
-  params.waveguideCount = count;
-
-  const btn1 = document.getElementById('btn-wg-1');
-  const btn2 = document.getElementById('btn-wg-2');
-  const wg2Panel = document.getElementById('wg2-panel');
-
-  if (count === 1) {
-    btn1.classList.add('active');
-    btn2.classList.remove('active');
-    wg2Panel.style.display = 'none';
-  } else {
-    btn2.classList.add('active');
-    btn1.classList.remove('active');
-    wg2Panel.style.display = 'block';
-  }
-
-  buildStructure();
-};
-
-// 7. 슬라이더 이벤트
+// 6. 슬라이더 이벤트
 function bindSlider(id, targetObj, key, displayId) {
   const slider = document.getElementById(id);
   const display = document.getElementById(displayId);
@@ -351,12 +326,6 @@ function bindSlider(id, targetObj, key, displayId) {
 bindSlider('w-core-slider', params.core1, 'w', 'w-core-val');
 bindSlider('h-core-slider', params.core1, 'h', 'h-core-val');
 bindSlider('l-core-slider', params.core1, 'l', 'l-core-val');
-
-// Core 2 & Gap
-bindSlider('gap-slider', params, 'gap', 'gap-val');
-bindSlider('w-core2-slider', params.core2, 'w', 'w-core2-val');
-bindSlider('h-core2-slider', params.core2, 'h', 'h-core2-val');
-bindSlider('l-core2-slider', params.core2, 'l', 'l-core2-val');
 
 // Claddings
 bindSlider('w-sub-slider', params.sub, 'w', 'w-sub-val');
@@ -401,7 +370,7 @@ window.toggleLaserPanel = function() {
   panel.style.display = (panel.style.display === 'none' || panel.style.display === '') ? 'block' : 'none';
 };
 
-// 8. 애니메이션 루프
+// 7. 애니메이션 루프 (빛 진행 연출)
 let clock = new THREE.Clock();
 
 function animate() {
@@ -409,11 +378,34 @@ function animate() {
 
   const t = clock.getElapsedTime();
 
+  // 입사 레이저 펄스
   if (laserBeamMat) {
     const freq = 10;
     const pulseFactor = 0.5 + 0.5 * Math.sin(t * freq);
     laserBeamMat.emissiveIntensity = params.laser.intensity * pulseFactor;
     laserBeamMat.opacity = 0.4 + 0.5 * pulseFactor;
+  }
+
+  // 도파로 내부 빛 진행 (Phase Velocity 전파 시각화)
+  if (lightPropagationGroup) {
+    const c1L = params.core1.l * SCALE;
+    const speed = 1.2; // 전파 속도
+
+    lightPropagationGroup.children.forEach((packet, idx) => {
+      // z 위치를 시간 t에 따라 이동
+      let currentZ = packet.position.z + speed * 0.01;
+      
+      // 도파로 끝단 도달 시 다시 입력단으로 순환 (Continuous Wave)
+      if (currentZ > c1L / 2) {
+        currentZ = -c1L / 2;
+      }
+      packet.position.z = currentZ;
+
+      // 위치에 따른 파동 맥동 효과
+      const phase = (currentZ / c1L) * Math.PI * 8 - t * 10;
+      const waveVal = 0.5 + 0.5 * Math.sin(phase);
+      packet.scale.set(1 + 0.2 * waveVal, 1 + 0.2 * waveVal, 1);
+    });
   }
 
   axisGizmo.quaternion.copy(camera.quaternion).invert();
