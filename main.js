@@ -79,12 +79,12 @@ function createCrossSectionCanvas() {
 }
 createCrossSectionCanvas();
 
-// 3. 파라미터 관리
+// 3. 파라미터 관리 (기본값: 표준 Silicon Photonics 450x220nm)
 const SCALE = 0.001;
 let params = {
   nCore: 3.45,
   nCladd: 1.45,
-  core1: { w: 1200, h: 800, l: 3000 }, // 다중모드 관찰이 용이하도록 기본 코어 사이즈 확대
+  core1: { w: 450, h: 220, l: 3000 },
   sub: { w: 2500, h: 400, l: 3000 },
   top: { w: 2500, h: 600, l: 3000 },
   laser: {
@@ -274,7 +274,7 @@ window.toggleLaserPanel = function() {
   }
 };
 
-// 6. [핵심 구현] 다중 모드(Multimode TE_mn) 지원 2D 전기장 연산
+// 6. [핵심 수정] 유효 굴절률(n_eff_approx) 기반 2D 전기장 연산
 function drawCrossSectionField(t) {
   const cvs = document.getElementById('cross-section-canvas');
   if (!cvs) return;
@@ -289,15 +289,23 @@ function drawCrossSectionField(t) {
   const incX = (params.laser.rotX * Math.PI) / 180;
   const incY = (params.laser.rotY * Math.PI) / 180;
 
-  const NA = Math.sqrt(Math.max(0, n2 * n2 - n1 * n1));
-  const maxAcceptanceAngleRad = Math.asin(Math.min(1.0, NA / n1));
-  const totalIncAngleRad = Math.sqrt(incX * incX + incY * incY);
-
-  const isGuided = totalIncAngleRad <= maxAcceptanceAngleRad && NA > 0;
-
   const coreW = params.core1.w; // nm
   const coreH = params.core1.h; // nm
   const wavelengthNm = params.laser.wavelength;
+
+  // [유효 굴절률 보정 로직]
+  // 수직 두께(h)에 따른 confinement factor Gamma_y 수치 근사
+  const rawNA = Math.sqrt(Math.max(0, n2 * n2 - n1 * n1));
+  const gammaY = Math.min(1.0, coreH / (coreH + (wavelengthNm / (Math.PI * (rawNA || 1)))));
+  
+  // 유효 굴절률 n_eff 및 유효 NA_eff 연산
+  const n_eff_approx = Math.sqrt(n1 * n1 + gammaY * (n2 * n2 - n1 * n1));
+  const NA_eff = Math.sqrt(Math.max(0, n_eff_approx * n_eff_approx - n1 * n1));
+
+  // 수용각 및 전반사 유효 조건 판별
+  const maxAcceptanceAngleRad = Math.asin(Math.min(1.0, NA_eff / n1));
+  const totalIncAngleRad = Math.sqrt(incX * incX + incY * incY);
+  const isGuided = totalIncAngleRad <= maxAcceptanceAngleRad && NA_eff > 0;
 
   const imgData = ctx.createImageData(W, H);
   const data = imgData.data;
@@ -314,25 +322,25 @@ function drawCrossSectionField(t) {
     return;
   }
 
-  // 1. 규격화 주파수(V-number) 계산 및 허용 최고 모드 차수 유도
-  const Vx = (Math.PI * coreW / wavelengthNm) * NA;
-  const Vy = (Math.PI * coreH / wavelengthNm) * NA;
+  // 유효 NA 기반 V-number 산출
+  const Vx = (Math.PI * coreW / wavelengthNm) * NA_eff;
+  const Vy = (Math.PI * coreH / wavelengthNm) * NA_eff;
 
-  const maxM = Math.max(0, Math.floor((2 * Vx) / Math.PI)); // X축 최고 모드 차수
-  const maxN = Math.max(0, Math.floor((2 * Vy) / Math.PI)); // Y축 최고 모드 차수
+  // 허용 최고 모드 차수 (Vx, Vy <= pi/2 이면 0 -> TE00 단일모드)
+  const maxM = Math.max(0, Math.floor((2 * Vx) / Math.PI)); 
+  const maxN = Math.max(0, Math.floor((2 * Vy) / Math.PI)); 
 
-  // 패널 상단에 활성화된 최고 모드 표기
   const modeTextEl = document.getElementById('mode-info-text');
   if (modeTextEl) {
-    modeTextEl.textContent = `Active Modes: TE00 ~ TE${maxM}${maxN} (Vx:${Vx.toFixed(1)}, Vy:${Vy.toFixed(1)})`;
+    modeTextEl.textContent = `Active Modes: TE${maxM}${maxN} (neff:${n_eff_approx.toFixed(2)}, Vx:${Vx.toFixed(2)})`;
   }
 
   const refrY = Math.asin(Math.min(1.0, (n1 / n2) * Math.sin(incY)));
   const thetaX = Math.PI / 2 - refrY;
-  const dp = (wavelengthNm / (2 * Math.PI)) / Math.sqrt(Math.max(0.001, n2 * n2 * Math.sin(thetaX) ** 2 - n1 * n1));
+  const dp = (wavelengthNm / (2 * Math.PI)) / Math.sqrt(Math.max(0.001, n_eff_approx * n_eff_approx * Math.sin(thetaX) ** 2 - n1 * n1));
   const alpha = 1 / (dp * 0.95);
 
-  const beta = ((2 * Math.PI) / (wavelengthNm * 1e-9)) * n2 * Math.cos(refrY);
+  const beta = ((2 * Math.PI) / (wavelengthNm * 1e-9)) * n_eff_approx * Math.cos(refrY);
 
   const viewW = coreW * 2.4;
   const viewH = coreH * 2.4;
@@ -348,16 +356,13 @@ function drawCrossSectionField(t) {
       let totalSpatialAmplitude = 0;
       let totalWeight = 0;
 
-      // 허용 가능한 모든 TE_mn 모드의 중첩(Superposition) 연산
       for (let m = 0; m <= maxM; m++) {
         for (let n = 0; n <= maxN; n++) {
-          // 입사각에 따른 모드 간 가중치(Weight) 분배
           const weight = Math.exp(-0.3 * (m * Math.abs(incX * 10) + n * Math.abs(incY * 10)));
           
           const kx_m = ((m + 1) * Math.PI * 0.72) / coreW;
           const ky_n = ((n + 1) * Math.PI * 0.72) / coreH;
 
-          // m, n의 짝수/홀수 여부에 따라 cos/sin 함수 분기 (우수/기수 모드)
           const modeX_in = (m % 2 === 0) ? Math.cos(kx_m * x) : Math.sin(kx_m * x);
           const modeY_in = (n % 2 === 0) ? Math.cos(ky_n * y) : Math.sin(ky_n * y);
 
