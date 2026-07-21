@@ -149,7 +149,7 @@ function build3DScene() {
   core1Mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(cGeo1), wireMat));
   scene.add(core1Mesh);
 
-  // B. Core 2 (도파로 2개일 때만 생성)
+  // B. Core 2
   if (params.waveguideCount === 2) {
     const cGeo2 = new THREE.BoxGeometry(c2W, c2H, c2L);
     core2Mesh = new THREE.Mesh(cGeo2, core2Mat);
@@ -259,7 +259,6 @@ build3DScene();
 // 5. HTML 이벤트 헬퍼 및 바인딩
 // ==========================================
 
-// HTML 인라인 onclick 함수 선언
 window.setWaveguideCount = function(count) {
   params.waveguideCount = count;
 
@@ -283,10 +282,17 @@ window.setWaveguideCount = function(count) {
 window.setCoreMaterial = function(name, nVal) {
   params.nCore1 = nVal;
   params.nCore2 = nVal;
-  const slider = document.getElementById('n-core-slider');
-  const disp = document.getElementById('n-core-val');
-  if (slider) slider.value = nVal;
-  if (disp) disp.textContent = nVal.toFixed(2);
+
+  const slider1 = document.getElementById('n-core-slider');
+  const disp1 = document.getElementById('n-core-val');
+  if (slider1) slider1.value = nVal;
+  if (disp1) disp1.textContent = nVal.toFixed(2);
+
+  const slider2 = document.getElementById('n-core2-slider');
+  const disp2 = document.getElementById('n-core2-val');
+  if (slider2) slider2.value = nVal;
+  if (disp2) disp2.textContent = nVal.toFixed(2);
+
   build3DScene();
 };
 
@@ -306,7 +312,7 @@ window.toggleLaserPanel = function() {
   }
 };
 
-// 슬라이더 바인딩
+// 슬라이더 바인딩 함수
 function bindSlider(id, targetObj, key, displayId) {
   const slider = document.getElementById(id);
   const display = document.getElementById(displayId);
@@ -352,6 +358,15 @@ if (nCoreSlider) {
   nCoreSlider.addEventListener('input', (e) => {
     params.nCore1 = parseFloat(e.target.value);
     document.getElementById('n-core-val').textContent = params.nCore1;
+    build3DScene();
+  });
+}
+
+const nCore2Slider = document.getElementById('n-core2-slider');
+if (nCore2Slider) {
+  nCore2Slider.addEventListener('input', (e) => {
+    params.nCore2 = parseFloat(e.target.value);
+    document.getElementById('n-core2-val').textContent = params.nCore2;
     build3DScene();
   });
 }
@@ -493,8 +508,8 @@ function drawCrossSectionField(t) {
 
   const modeTextEl = document.getElementById('mode-info-text');
   if (modeTextEl) {
-    const wgStr = params.waveguideCount === 2 ? ' [Directional Coupler]' : '';
-    modeTextEl.textContent = `TE${maxM}${maxN}${wgStr} (neff:${n_eff1.toFixed(2)}, Vx:${Vx.toFixed(2)}, Vy:${Vy.toFixed(2)})`;
+    const wgStr = params.waveguideCount === 2 ? ` [Coupled: n1=${nCore1.toFixed(2)}, n2=${nCore2.toFixed(2)}]` : '';
+    modeTextEl.textContent = `TE${maxM}${maxN}${wgStr} (Vx:${Vx.toFixed(2)}, Vy:${Vy.toFixed(2)})`;
   }
 
   const refrY = Math.asin(Math.min(1.0, (n1 / nCore1) * Math.sin(incY)));
@@ -505,7 +520,7 @@ function drawCrossSectionField(t) {
   const beta1 = ((2 * Math.PI) / (wavelengthNm * 1e-9)) * n_eff1;
   const beta2 = ((2 * Math.PI) / (wavelengthNm * 1e-9)) * n_eff2;
 
-  // 슈퍼모드 및 CMT 결합 상수 연산
+  // 슈퍼모드 및 비대칭 CMT 결합 상수 연산
   const deltaBeta = Math.abs(beta1 - beta2);
   const kappa_0 = 0.003; 
   const kappa = kappa_0 * Math.exp(-gap_nm / (dp * 1.2));
