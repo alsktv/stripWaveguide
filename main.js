@@ -124,10 +124,10 @@ function build3DScene() {
   topMesh.position.set(0, topH / 2, 0);
   scene.add(topMesh);
 
-  // C. 외부 입사 레이저 빔 복원
+  // C. 외부 입사 레이저 빔
   buildStraightLaserBeam(c1W, c1H, c1L);
 
-  // D. 스펙트럼 그래프 복원
+  // D. 스펙트럼 그래프
   drawSpectrumGraph();
 }
 
@@ -151,7 +151,6 @@ function buildStraightLaserBeam(c1W, c1H, c1L) {
   scene.add(laserBeamMesh);
 }
 
-// 4. 스펙트럼 캔버스 그래프 복원 함수
 function drawSpectrumGraph() {
   const canvas = document.getElementById('spectrum-canvas');
   if (!canvas) return;
@@ -166,7 +165,6 @@ function drawSpectrumGraph() {
   const deltaLambda = params.laser.pulseWidth;
   const I0 = params.laser.intensity;
 
-  // 축 그리기
   ctx.strokeStyle = '#475569';
   ctx.lineWidth = 1;
   ctx.beginPath();
@@ -180,7 +178,6 @@ function drawSpectrumGraph() {
   ctx.fillText('I', 10, 15);
   ctx.fillText('λ (nm)', w - 35, h - 5);
 
-  // 가우시안 커브
   ctx.strokeStyle = '#ef4444';
   ctx.fillStyle = 'rgba(239, 68, 68, 0.2)';
   ctx.lineWidth = 2;
@@ -213,7 +210,7 @@ function drawSpectrumGraph() {
 
 build3DScene();
 
-// 5. 슬라이더 이벤트 바인딩
+// 5. 슬라이더 바인딩
 function bindSlider(id, targetObj, key, displayId) {
   const slider = document.getElementById(id);
   const display = document.getElementById(displayId);
@@ -269,7 +266,7 @@ window.toggleLaserPanel = function() {
   }
 };
 
-// 6. 출력 단면 전반사 위상변화 & 에바네센트 2D 전기장 계산 함수
+// 6. 출력 단면 전반사 여부 검증 및 2D 전기장 히트맵 연산 함수
 function drawCrossSectionField(t) {
   const cvs = document.getElementById('cross-section-canvas');
   if (!cvs) return;
@@ -284,11 +281,38 @@ function drawCrossSectionField(t) {
   const incX = (params.laser.rotX * Math.PI) / 180;
   const incY = (params.laser.rotY * Math.PI) / 180;
 
-  // 스넬의 법칙
+  // 1. 수용각(Acceptance Angle) 및 전반사 조건 검증
+  const NA = Math.sqrt(Math.max(0, n2 * n2 - n1 * n1));
+  const maxAcceptanceAngleRad = Math.asin(Math.min(1.0, NA / n1));
+  const totalIncAngleRad = Math.sqrt(incX * incX + incY * incY);
+
+  const isGuided = totalIncAngleRad <= maxAcceptanceAngleRad && NA > 0;
+
+  const coreW = params.core1.w;
+  const coreH = params.core1.h;
+
+  const imgData = ctx.createImageData(W, H);
+  const data = imgData.data;
+
+  // 2. 전반사 미발생(Cutoff) 시: 전기장이 없으므로 검은 화면 및 알림 표시
+  if (!isGuided) {
+    for (let i = 0; i < data.length; i += 4) {
+      data[i] = 2;       // R
+      data[i + 1] = 6;   // G
+      data[i + 2] = 23;  // B
+      data[i + 3] = 255; // A
+    }
+    ctx.putImageData(imgData, 0, 0);
+
+    // Core & Cladding 영역 구분 경계선 그리기
+    drawBoundaryAndLabels(ctx, W, H, coreW, coreH, false);
+    return;
+  }
+
+  // 3. 전반사 발생(Guided) 시 전기장 연산
   const refrX = Math.asin(Math.min(1.0, (n1 / n2) * Math.sin(incX)));
   const refrY = Math.asin(Math.min(1.0, (n1 / n2) * Math.sin(incY)));
 
-  // 전반사 프레넬 위상 지연 (Phase Shift δ)
   const thetaX = Math.PI / 2 - refrY;
   let deltaPhaseX = 0;
   if (Math.sin(thetaX) > n1 / n2) {
@@ -297,17 +321,10 @@ function drawCrossSectionField(t) {
     deltaPhaseX = 2 * Math.atan(num / den);
   }
 
-  // 전파 상수 및 에바네센트 감쇠 계수 γ (Gamma)
   const k0 = (2 * Math.PI) / (params.laser.wavelength * 1e-9);
   const beta = k0 * n2 * Math.cos(refrY);
   const gammaX = Math.sqrt(Math.max(0, beta * beta - (k0 * n1) ** 2)) * SCALE * 0.8;
   const gammaY = Math.sqrt(Math.max(0, beta * beta - (k0 * n1) ** 2)) * SCALE * 0.8;
-
-  const coreW = params.core1.w;
-  const coreH = params.core1.h;
-
-  const imgData = ctx.createImageData(W, H);
-  const data = imgData.data;
 
   for (let py = 0; py < H; py++) {
     for (let px = 0; px < W; px++) {
@@ -337,7 +354,6 @@ function drawCrossSectionField(t) {
       const phaseZ = beta * (params.core1.l * SCALE) - omega * t;
       const E_val = Math.abs(params.laser.intensity * fieldX * fieldY * Math.sin(phaseZ));
 
-      // HSL Color Mapping (파란색 -> 주황색 -> 빨간색)
       const hue = (1.0 - Math.min(1.0, E_val)) * 200;
       const lightness = 40 + E_val * 20;
 
@@ -353,12 +369,45 @@ function drawCrossSectionField(t) {
 
   ctx.putImageData(imgData, 0, 0);
 
-  // 코어 경계 라인 표시
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
-  ctx.lineWidth = 1;
+  // 4. Core & Cladding 경계선 및 텍스트 라벨 추가
+  drawBoundaryAndLabels(ctx, W, H, coreW, coreH, true);
+}
+
+// Core & Cladding 시각적 레이아웃 표시 함수
+function drawBoundaryAndLabels(ctx, W, H, coreW, coreH, isGuided) {
   const corePxW = (coreW / (coreW * 3.6)) * W * 2;
   const corePxH = (coreH / (coreH * 3.6)) * H * 2;
-  ctx.strokeRect((W - corePxW) / 2, (H - corePxH) / 2, corePxW, corePxH);
+  const coreX = (W - corePxW) / 2;
+  const coreY = (H - corePxH) / 2;
+
+  // 코어 영역 선명한 점선/실선 박스
+  ctx.strokeStyle = isGuided ? 'rgba(255, 255, 255, 0.8)' : 'rgba(239, 68, 68, 0.6)';
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([4, 4]);
+  ctx.strokeRect(coreX, coreY, corePxW, corePxH);
+  ctx.setLineDash([]); // 점선 초기화
+
+  // 라벨 텍스트 표기
+  ctx.font = '10px sans-serif';
+  
+  // Cladding 라벨 (외각 상단)
+  ctx.fillStyle = '#94a3b8';
+  ctx.fillText('Cladding', 8, 14);
+
+  // Core 라벨 (내부 중심)
+  ctx.fillStyle = isGuided ? '#ffffff' : '#f87171';
+  ctx.fillText('Core', coreX + 6, coreY + 14);
+
+  // 전반사 조건 실패 시 경고 문구
+  if (!isGuided) {
+    ctx.fillStyle = '#f87171';
+    ctx.font = 'Bold 11px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('RADIATION LOSS', W / 2, H / 2 - 6);
+    ctx.font = '10px sans-serif';
+    ctx.fillText('(No TIR / Field = 0)', W / 2, H / 2 + 10);
+    ctx.textAlign = 'left';
+  }
 }
 
 function hslToRgb(h, s, l) {
@@ -398,7 +447,6 @@ function animate() {
   const incX = (params.laser.rotX * Math.PI) / 180;
   const incY = (params.laser.rotY * Math.PI) / 180;
 
-  // 레이저 빔 위치 및 오일러 각도 회전 연동 복원
   if (laserBeamMesh) {
     laserBeamMesh.position.set(0, c1H / 2, -c1L / 2);
     laserBeamMesh.rotation.order = 'XYZ';
@@ -411,7 +459,6 @@ function animate() {
     laserBeamMat.opacity = 0.4 + 0.5 * pulseFactor;
   }
 
-  // 2D 단면 전기장 히트맵 갱신
   drawCrossSectionField(t);
 
   controls.update();
