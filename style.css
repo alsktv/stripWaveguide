@@ -18,6 +18,20 @@ body {
   height: 100%;
 }
 
+/* 우측 상단 XYZ 좌표축 지저모 위치 */
+#axis-container {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  width: 120px;
+  height: 120px;
+  background: rgba(15, 23, 42, 0.6);
+  backdrop-filter: blur(8px);
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  pointer-events: none;
+}
+
 #ui-panel {
   position: absolute;
   top: 20px;
@@ -100,7 +114,6 @@ h2 {
   font-weight: 600;
 }
 
-/* 레이저 전용 접기/펼치기 버튼 및 패널 */
 .btn-toggle {
   width: 100%;
   background: #0284c7;
@@ -126,6 +139,14 @@ h2 {
   padding: 10px;
   border-radius: 6px;
   border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.graph-box {
+  background: #0f172a;
+  border-radius: 6px;
+  padding: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  margin-top: 6px;
 }
 
 .control-group {

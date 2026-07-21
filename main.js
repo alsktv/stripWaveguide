@@ -1,4 +1,4 @@
-// 1. Scene, Camera, Renderer 설정
+// 1. Main Scene, Camera, Renderer 설정
 const container = document.getElementById('canvas-container');
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x0f172a);
@@ -20,7 +20,7 @@ const controls = new THREE.OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.dampingFactor = 0.05;
 
-// Light & Grid
+// Light
 const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
 scene.add(ambientLight);
 
@@ -32,8 +32,39 @@ const gridHelper = new THREE.GridHelper(10, 20, 0x334155, 0x1e293b);
 gridHelper.position.y = -0.5;
 scene.add(gridHelper);
 
-// 2. 파라미터 상태 관리
-const SCALE = 0.001; // 100nm = 0.1 unit
+// 2. 우측 상단 XYZ 좌표축(Orientation Axis) Mini-Scene 생성
+const axisContainer = document.getElementById('axis-container');
+const axisScene = new THREE.Scene();
+const axisCamera = new THREE.PerspectiveCamera(50, 1, 0.1, 10);
+axisCamera.position.set(0, 0, 2.5);
+
+const axisRenderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+axisRenderer.setSize(120, 120);
+axisContainer.appendChild(axisRenderer.domElement);
+
+// 축 메쉬 빌드 (X: Red, Y: Green, Z: Blue)
+function createAxesGizmo() {
+  const group = new THREE.Group();
+  const dirX = new THREE.Vector3(1, 0, 0);
+  const dirY = new THREE.Vector3(0, 1, 0);
+  const dirZ = new THREE.Vector3(0, 0, 1);
+  const origin = new THREE.Vector3(0, 0, 0);
+
+  const arrowX = new THREE.ArrowHelper(dirX, origin, 0.8, 0xef4444, 0.2, 0.15);
+  const arrowY = new THREE.ArrowHelper(dirY, origin, 0.8, 0x22c55e, 0.2, 0.15);
+  const arrowZ = new THREE.ArrowHelper(dirZ, origin, 0.8, 0x3b82f6, 0.2, 0.15);
+
+  group.add(arrowX);
+  group.add(arrowY);
+  group.add(arrowZ);
+  return group;
+}
+
+const axisGizmo = createAxesGizmo();
+axisScene.add(axisGizmo);
+
+// 3. 파라미터 상태
+const SCALE = 0.001;
 
 let params = {
   nCore: 3.45,
@@ -43,15 +74,15 @@ let params = {
   top: { w: 1500, h: 600, l: 3000 },
   laser: {
     wavelength: 1550,   // nm
-    rotX: 0,            // deg
-    rotY: 0,            // deg
-    rotZ: 0,            // deg
-    pulseWidth: 300,    // nm
-    intensity: 1.0      // a.u.
+    rotX: 0,
+    rotY: 0,
+    rotZ: 0,
+    pulseWidth: 30,     // nm (Spectral Width)
+    intensity: 1.0
   }
 };
 
-// Material 정의
+// Material
 const coreMat = new THREE.MeshStandardMaterial({
   color: 0x38bdf8,
   roughness: 0.2,
@@ -76,30 +107,28 @@ const topMat = new THREE.MeshStandardMaterial({
 
 const wireframeMat = new THREE.LineBasicMaterial({ color: 0xf8fafc, linewidth: 1 });
 
-// Mesh 참조
-let coreMesh, subMesh, topMesh, laserGroup, pointLight;
+let coreMesh, subMesh, topMesh, laserBeamMesh, laserBeamMat;
 
-// 3. 전체 구조 및 레이저 3D 구축
+// 4. 3D 메쉬 생성
 function buildStructure() {
   if (coreMesh) { scene.remove(coreMesh); coreMesh.geometry.dispose(); }
   if (subMesh) { scene.remove(subMesh); subMesh.geometry.dispose(); }
   if (topMesh) { scene.remove(topMesh); topMesh.geometry.dispose(); }
-  if (laserGroup) { scene.remove(laserGroup); }
+  if (laserBeamMesh) { scene.remove(laserBeamMesh); laserBeamMesh.geometry.dispose(); }
 
   const coreW = params.core.w * SCALE;
   const coreH = params.core.h * SCALE;
   const coreL = params.core.l * SCALE;
 
-  // A. Substrate
+  // Substrate
   const subW = params.sub.w * SCALE;
   const subH = params.sub.h * SCALE;
   const subL = params.sub.l * SCALE;
-  const subGeo = new THREE.BoxGeometry(subW, subH, subL);
-  subMesh = new THREE.Mesh(subGeo, subMat);
+  subMesh = new THREE.Mesh(new THREE.BoxGeometry(subW, subH, subL), subMat);
   subMesh.position.set(0, -subH / 2, 0);
   scene.add(subMesh);
 
-  // B. Core
+  // Core
   const coreGeo = new THREE.BoxGeometry(coreW, coreH, coreL);
   coreMesh = new THREE.Mesh(coreGeo, coreMat);
   coreMesh.position.set(0, coreH / 2, 0);
@@ -109,87 +138,134 @@ function buildStructure() {
   coreMesh.add(wireframe);
   scene.add(coreMesh);
 
-  // C. Upper Cladding (Enclosing Core)
+  // Upper Cladding
   const topW = params.top.w * SCALE;
   const topH = params.top.h * SCALE;
   const topL = params.top.l * SCALE;
-  const topGeo = new THREE.BoxGeometry(topW, topH, topL);
-  topMesh = new THREE.Mesh(topGeo, topMat);
+  topMesh = new THREE.Mesh(new THREE.BoxGeometry(topW, topH, topL), topMat);
   topMesh.position.set(0, topH / 2, 0);
   scene.add(topMesh);
 
-  // D. Dynamic Laser Source Construction
-  buildLaserSource(coreW, coreH, coreL);
+  // 5. 일자형 실린더 레이저 빔 생성
+  buildStraightLaserBeam(coreW, coreH, coreL);
+  
+  // 그래프 업데이트
+  drawSpectrumGraph();
 }
 
-// 4. 레이저 각도/파장/가우시안 펄스 반영 생성 함수
-function buildLaserSource(coreW, coreH, coreL) {
-  laserGroup = new THREE.Group();
+// 일자형 스트림 레이저 빔 구성
+function buildStraightLaserBeam(coreW, coreH, coreL) {
+  const beamLength = 1.5; // 입사 빔 길이어
+  const beamRadius = 0.04;
 
-  const inputZ = -coreL / 2; // 입력 단면 위치
-  const pWidth = params.laser.pulseWidth * SCALE;
-  const intensity = params.laser.intensity;
-
-  // 파장에 따른 레이저 빔 가시광 색상 매핑 (1550nm 통신파장은 붉은색계열 시각화)
-  const laserColor = params.laser.wavelength > 1000 ? 0xef4444 : 0x3b82f6;
-
-  // A. 입사 가우시안 빔 가이드 링 (Pulse Width 비례 크기)
-  const ringGeo = new THREE.RingGeometry(pWidth * 0.1, pWidth * 0.5, 32);
-  const ringMat = new THREE.MeshBasicMaterial({
-    color: laserColor,
-    side: THREE.DoubleSide,
+  const beamGeo = new THREE.CylinderGeometry(beamRadius, beamRadius, beamLength, 32);
+  
+  // 일자형 레이저 전용 발광 메티리얼
+  laserBeamMat = new THREE.MeshStandardMaterial({
+    color: 0xef4444,
+    emissive: 0xef4444,
+    emissiveIntensity: params.laser.intensity,
     transparent: true,
-    opacity: 0.8 * intensity
+    opacity: 0.85
   });
-  const ringMesh = new THREE.Mesh(ringGeo, ringMat);
-  laserGroup.add(ringMesh);
 
-  // B. 입사 레이저 원뿔 빔 (Pulse Width 및 Intensity 반영)
-  const coneLength = 0.8;
-  const coneGeo = new THREE.ConeGeometry(pWidth * 0.6, coneLength, 32, 1, true);
-  const coneMat = new THREE.MeshBasicMaterial({
-    color: laserColor,
-    transparent: true,
-    opacity: Math.min(0.4 * intensity, 0.9),
-    side: THREE.DoubleSide
-  });
-  const coneMesh = new THREE.Mesh(coneGeo, coneMat);
-  coneMesh.rotation.x = Math.PI / 2;
-  coneMesh.position.set(0, 0, -coneLength / 2);
-  laserGroup.add(coneMesh);
+  laserBeamMesh = new THREE.Mesh(beamGeo, laserBeamMat);
 
-  // C. 발광 포인트 라이트
-  pointLight = new THREE.PointLight(laserColor, 2 * intensity, 3);
-  laserGroup.add(pointLight);
+  // 회전 중심 및 위치 조정 (실린더 축을 Z축 방향으로 정렬)
+  beamGeo.rotateX(Math.PI / 2);
+  laserBeamMesh.position.set(0, coreH / 2, -coreL / 2 - beamLength / 2);
 
-  // D. 위치 설정 (도파로 단면 입구 중심)
-  laserGroup.position.set(0, coreH / 2, inputZ);
-
-  // E. x, y, z 입사 각도(회전) 적용 (Degree -> Radian 변환)
+  // x, y, z 회전 각도 바인딩
   const radX = (params.laser.rotX * Math.PI) / 180;
   const radY = (params.laser.rotY * Math.PI) / 180;
   const radZ = (params.laser.rotZ * Math.PI) / 180;
-  laserGroup.rotation.set(radX, radY, radZ);
+  laserBeamMesh.rotation.set(radX, radY, radZ);
 
-  scene.add(laserGroup);
+  scene.add(laserBeamMesh);
+}
+
+// 6. 파장 대비 세기 ($I$ vs $\lambda$) 스펙트럼 Canvas 그래프 그리기
+function drawSpectrumGraph() {
+  const canvas = document.getElementById('spectrum-canvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  
+  const w = canvas.width;
+  const h = canvas.height;
+
+  ctx.clearRect(0, 0, w, h);
+
+  // 가우시안 변수
+  const lambda0 = params.laser.wavelength;
+  const deltaLambda = params.laser.pulseWidth;
+  const I0 = params.laser.intensity;
+
+  // 축 그리기
+  ctx.strokeStyle = '#475569';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(30, 10);
+  ctx.lineTo(30, h - 20);
+  ctx.lineTo(w - 10, h - 20);
+  ctx.stroke();
+
+  // 라벨
+  ctx.fillStyle = '#94a3b8';
+  ctx.font = '10px sans-serif';
+  ctx.fillText('I', 10, 15);
+  ctx.fillText('λ (nm)', w - 35, h - 5);
+
+  // 가우시안 곡선 계산 및 그리기
+  ctx.strokeStyle = '#ef4444';
+  ctx.fillStyle = 'rgba(239, 68, 68, 0.2)';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+
+  const minLambda = 700;
+  const maxLambda = 1800;
+
+  let started = false;
+  for (let px = 30; px <= w - 10; px++) {
+    // 픽셀을 파장(nm)으로 매핑
+    const lam = minLambda + ((px - 30) / (w - 40)) * (maxLambda - minLambda);
+    
+    // Gaussian: I = I0 * exp( - (lam - lambda0)^2 / (2 * sigma^2) )
+    const sigma = deltaLambda / 2.355; // FWHM 변환
+    const intensity = I0 * Math.exp(-Math.pow(lam - lambda0, 2) / (2 * Math.pow(sigma, 2)));
+
+    // y 픽셀 변환
+    const py = (h - 20) - (intensity / 3.0) * (h - 30);
+
+    if (!started) {
+      ctx.moveTo(px, py);
+      started = true;
+    } else {
+      ctx.lineTo(px, py);
+    }
+  }
+  ctx.stroke();
+
+  // 하단 영역 색칠
+  ctx.lineTo(w - 10, h - 20);
+  ctx.lineTo(30, h - 20);
+  ctx.closePath();
+  ctx.fill();
 }
 
 buildStructure();
 
-// 5. 슬라이더 이벤트 바인딩
-function bindSlider(id, targetObj, key, displayId, callback) {
+// 7. 슬라이더 이벤트
+function bindSlider(id, targetObj, key, displayId) {
   const slider = document.getElementById(id);
   const display = document.getElementById(displayId);
   slider.addEventListener('input', (e) => {
     const val = parseFloat(e.target.value);
     targetObj[key] = val;
     display.textContent = val;
-    if (callback) callback();
-    else buildStructure();
+    buildStructure();
   });
 }
 
-// Dimensions Sliders
 bindSlider('w-core-slider', params.core, 'w', 'w-core-val');
 bindSlider('h-core-slider', params.core, 'h', 'h-core-val');
 bindSlider('l-core-slider', params.core, 'l', 'l-core-val');
@@ -202,7 +278,6 @@ bindSlider('w-top-slider', params.top, 'w', 'w-top-val');
 bindSlider('h-top-slider', params.top, 'h', 'h-top-val');
 bindSlider('l-top-slider', params.top, 'l', 'l-top-val');
 
-// Laser Controls Sliders
 bindSlider('wavelength-slider', params.laser, 'wavelength', 'wavelength-val');
 bindSlider('rot-x-slider', params.laser, 'rotX', 'rot-x-val');
 bindSlider('rot-y-slider', params.laser, 'rotY', 'rot-y-val');
@@ -210,7 +285,6 @@ bindSlider('rot-z-slider', params.laser, 'rotZ', 'rot-z-val');
 bindSlider('pulse-width-slider', params.laser, 'pulseWidth', 'pulse-width-val');
 bindSlider('intensity-slider', params.laser, 'intensity', 'intensity-val');
 
-// Refractive Index Sliders
 document.getElementById('n-core-slider').addEventListener('input', (e) => {
   params.nCore = parseFloat(e.target.value);
   document.getElementById('n-core-val').textContent = params.nCore;
@@ -221,7 +295,6 @@ document.getElementById('n-cladd-slider').addEventListener('input', (e) => {
   document.getElementById('n-cladd-val').textContent = params.nCladd;
 });
 
-// Presets
 window.setCoreMaterial = function(name, nVal) {
   params.nCore = nVal;
   document.getElementById('n-core-slider').value = nVal;
@@ -234,37 +307,33 @@ window.setCladdMaterial = function(name, nVal) {
   document.getElementById('n-cladd-val').textContent = nVal;
 };
 
-// Collapsible Panel Toggle
 window.toggleLaserPanel = function() {
   const panel = document.getElementById('laser-panel');
-  if (panel.style.display === 'none' || panel.style.display === '') {
-    panel.style.display = 'block';
-  } else {
-    panel.style.display = 'none';
-  }
+  panel.style.display = (panel.style.display === 'none' || panel.style.display === '') ? 'block' : 'none';
 };
 
-// 6. Animation Loop (Gaussian Pulse Motion)
+// 8. 애니메이션 루프 (일자 빔의 주기적 밝기 변화 & 좌표축 연동)
 let clock = new THREE.Clock();
 
 function animate() {
   requestAnimationFrame(animate);
 
-  if (laserGroup) {
-    const time = clock.getElapsedTime();
-    const intensity = params.laser.intensity;
-    
-    // Intensity에 비례하는 Pulse 확산 및 점멸 효과
-    const scalePulse = 1 + 0.15 * Math.sin(time * 8);
-    laserGroup.children[0].scale.set(scalePulse, scalePulse, 1);
-    
-    if (pointLight) {
-      pointLight.intensity = (1.5 + 0.5 * Math.sin(time * 8)) * intensity;
-    }
+  const t = clock.getElapsedTime();
+
+  // 일자형 레이저 빔이 주기에 따라 밝아졌다 어두워짐 (Sine 파동)
+  if (laserBeamMat) {
+    const freq = 10; // 파동 주파수
+    const pulseFactor = 0.5 + 0.5 * Math.sin(t * freq);
+    laserBeamMat.emissiveIntensity = params.laser.intensity * pulseFactor;
+    laserBeamMat.opacity = 0.4 + 0.5 * pulseFactor;
   }
+
+  // 메인 카메라의 회전 상태를 우측 상단 축 Gizmo 카메라에 연동
+  axisGizmo.quaternion.copy(camera.quaternion).invert();
 
   controls.update();
   renderer.render(scene, camera);
+  axisRenderer.render(axisScene, axisCamera);
 }
 animate();
 

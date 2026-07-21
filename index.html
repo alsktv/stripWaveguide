@@ -12,6 +12,9 @@
 
   <div id="canvas-container"></div>
 
+  <!-- 우측 상단 3D 축 나침반 컨테이너 -->
+  <div id="axis-container"></div>
+
   <div id="ui-panel">
     <h2>Strip Waveguide Controls</h2>
 
@@ -61,7 +64,7 @@
 
     <hr class="divider">
 
-    <!-- 3. Lower Cladding (Substrate) -->
+    <!-- 3. Lower Cladding -->
     <div class="section-title">Lower Cladding (BOX) (nm)</div>
     <div class="control-group">
       <label>Width: <span id="w-sub-val">1500</span> nm</label>
@@ -95,14 +98,14 @@
 
     <hr class="divider">
 
-    <!-- 5. Laser Source & Gaussian Pulse Settings -->
+    <!-- 5. Laser Settings & Spectrum Canvas Graph -->
     <button class="btn-toggle" onclick="toggleLaserPanel()">
-      Laser Source Settings ▼
+      Laser Settings & Spectrum ▼
     </button>
     
     <div id="laser-panel" class="collapsible-content">
       <div class="control-group">
-        <label>Wavelength ($\lambda$): <span id="wavelength-val">1550</span> nm</label>
+        <label>Center Wavelength ($\lambda_0$): <span id="wavelength-val">1550</span> nm</label>
         <input type="range" id="wavelength-slider" min="850" max="1650" step="10" value="1550">
       </div>
 
@@ -116,18 +119,24 @@
         <input type="range" id="rot-y-slider" min="-45" max="45" step="1" value="0">
       </div>
       <div class="control-group">
-        <label>Angle Z (Polarization): <span id="rot-z-val">0</span>°</label>
+        <label>Angle Z: <span id="rot-z-val">0</span>°</label>
         <input type="range" id="rot-z-slider" min="-90" max="90" step="1" value="0">
       </div>
 
       <div class="sub-title">Gaussian Pulse Parameters</div>
       <div class="control-group">
-        <label>Pulse Width ($w_0$): <span id="pulse-width-val">300</span> nm</label>
-        <input type="range" id="pulse-width-slider" min="100" max="1000" step="10" value="300">
+        <label>Spectral Width ($\Delta\lambda$): <span id="pulse-width-val">30</span> nm</label>
+        <input type="range" id="pulse-width-slider" min="5" max="100" step="1" value="30">
       </div>
       <div class="control-group">
         <label>Intensity ($I_0$): <span id="intensity-val">1.0</span> a.u.</label>
         <input type="range" id="intensity-slider" min="0.1" max="3.0" step="0.1" value="1.0">
+      </div>
+
+      <!-- 파장 대비 세기 실시간 그래프 -->
+      <div class="sub-title">Spectrum Graph ($I$ vs $\lambda$)</div>
+      <div class="graph-box">
+        <canvas id="spectrum-canvas" width="260" height="120"></canvas>
       </div>
     </div>
 
