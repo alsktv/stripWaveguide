@@ -95,7 +95,31 @@ function createAxesGizmo() {
 const axisGizmo = createAxesGizmo();
 axisScene.add(axisGizmo);
 
-// 3. 파라미터 상태
+// 3. Mode Number Overlay UI 생성
+function createModeOverlayUI() {
+  let modeDiv = document.getElementById('mode-info-overlay');
+  if (!modeDiv) {
+    modeDiv = document.createElement('div');
+    modeDiv.id = 'mode-info-overlay';
+    modeDiv.style.position = 'absolute';
+    modeDiv.style.top = '20px';
+    modeDiv.style.left = '20px';
+    modeDiv.style.padding = '12px 16px';
+    modeDiv.style.background = 'rgba(15, 23, 42, 0.85)';
+    modeDiv.style.border = '1px solid #334155';
+    modeDiv.style.borderRadius = '8px';
+    modeDiv.style.color = '#f8fafc';
+    modeDiv.style.fontFamily = 'sans-serif';
+    modeDiv.style.fontSize = '13px';
+    modeDiv.style.zIndex = '100';
+    modeDiv.style.backdropFilter = 'blur(4px)';
+    document.body.appendChild(modeDiv);
+  }
+  return modeDiv;
+}
+const modeOverlay = createModeOverlayUI();
+
+// 4. 파라미터 상태
 const SCALE = 0.001;
 
 let params = {
@@ -153,7 +177,7 @@ let guidedRedBeamMesh;
 let emVectorGroup;
 let waveLineMesh;
 
-// 4. 3D 메쉬 생성
+// 5. 3D 메쉬 생성
 function buildStructure() {
   if (core1Mesh) { scene.remove(core1Mesh); core1Mesh.geometry.dispose(); }
   if (subMesh) { scene.remove(subMesh); subMesh.geometry.dispose(); }
@@ -192,30 +216,28 @@ function buildStructure() {
   topMesh.position.set(0, topH / 2, 0);
   scene.add(topMesh);
 
-  // D. 외부 레이저 빔
+  // D. 레이저 빔
   buildStraightLaserBeam(c1W, c1H, c1L);
 
-  // E. 도파로 내부 가이드 빔
+  // E. 도파로 내부 진행 빔
   buildGuidedRedBeam(c1W, c1H, c1L);
 
   // F. TE 모드 전자기장 화살표
   buildTEFieldVectors(c1W, c1H, c1L);
 
-  // G. 연속적인 파동선
+  // G. 연속 파동선
   buildWaveLine(c1W, c1H, c1L);
 
   drawSpectrumGraph();
 }
 
-// 입사 레이저 원통 생성 (피봇 중심을 원통의 앞쪽 끝단으로 설정)
 function buildStraightLaserBeam(c1W, c1H, c1L) {
   const beamLength = 1.5; 
   const beamRadius = 0.04;
 
   const beamGeo = new THREE.CylinderGeometry(beamRadius, beamRadius, beamLength, 32);
-  // 피봇 위치를 원통 끝단(Tip)으로 이동
   beamGeo.translate(0, -beamLength / 2, 0);
-  beamGeo.rotateX(Math.PI / 2); // Z축 진행 방향
+  beamGeo.rotateX(Math.PI / 2);
   
   laserBeamMat = new THREE.MeshStandardMaterial({
     color: 0xef4444,
@@ -229,7 +251,6 @@ function buildStraightLaserBeam(c1W, c1H, c1L) {
   scene.add(laserBeamMesh);
 }
 
-// 도파로 내부 가이드 빔
 function buildGuidedRedBeam(c1W, c1H, c1L) {
   const beamRadius = Math.min(c1W, c1H) * 0.25;
   const beamGeo = new THREE.CylinderGeometry(beamRadius, beamRadius, c1L, 32);
@@ -239,7 +260,6 @@ function buildGuidedRedBeam(c1W, c1H, c1L) {
   scene.add(guidedRedBeamMesh);
 }
 
-// 전자기장 화살표 생성
 function buildTEFieldVectors(c1W, c1H, c1L) {
   emVectorGroup = new THREE.Group();
 
@@ -263,7 +283,6 @@ function buildTEFieldVectors(c1W, c1H, c1L) {
   scene.add(emVectorGroup);
 }
 
-// 연속적인 빛 진행 파동선
 function buildWaveLine(c1W, c1H, c1L) {
   const pointCount = 200;
   const geometry = new THREE.BufferGeometry();
@@ -282,7 +301,6 @@ function buildWaveLine(c1W, c1H, c1L) {
   scene.add(waveLineMesh);
 }
 
-// 스펙트럼 Canvas 그래프
 function drawSpectrumGraph() {
   const canvas = document.getElementById('spectrum-canvas');
   if (!canvas) return;
@@ -404,7 +422,7 @@ window.toggleLaserPanel = function() {
   panel.style.display = (panel.style.display === 'none' || panel.style.display === '') ? 'block' : 'none';
 };
 
-// 7. 메인 실시간 물리 계산 및 애니메이션 루프
+// 8. 실시간 애니메이션 및 전반사/모드 계산 루프
 let clock = new THREE.Clock();
 
 function animate() {
@@ -418,50 +436,72 @@ function animate() {
   const c1H = params.core1.h * SCALE;
   const c1L = params.core1.l * SCALE;
 
-  // 1. 입사각 변환 (Deg -> Rad)
   const incX = (params.laser.rotX * Math.PI) / 180;
   const incY = (params.laser.rotY * Math.PI) / 180;
 
-  // 도파로 입구 단면($z = -L/2$) 상에서의 오프셋 위치
   const inputZ = -c1L / 2;
   const inputX = 0;
   const inputY = c1H / 2;
 
-  // 2. 레이저 빔 정렬: 레이저 원통의 끝단 중심이 도파로 입구에 오도록 고정
   if (laserBeamMesh) {
     laserBeamMesh.position.set(inputX, inputY, inputZ);
     laserBeamMesh.rotation.order = 'XYZ';
     laserBeamMesh.rotation.set(-incX, incY, 0);
   }
 
-  // 3. 물리적 입사각 및 수용각(Acceptance Angle / Numerical Aperture) 계산
   const n1 = params.nCladd;
   const n2 = params.nCore;
+  const lam0_um = params.laser.wavelength / 1000; // nm -> um
 
-  // 전반사 임계각 theta_c (도파로 표면 수직 기준) 및 수용각 theta_acc
+  // 개구수(NA) 및 수용각(Acceptance Angle) 계산
   const NA = Math.sqrt(Math.max(0, n2 * n2 - n1 * n1));
-  const maxAcceptanceAngle = Math.asin(Math.min(1.0, NA / n1)); // 수용각 조건
+  const maxAcceptanceAngleRad = Math.asin(Math.min(1.0, NA / n1));
+  const maxAcceptanceAngleDeg = (maxAcceptanceAngleRad * 180) / Math.PI;
 
-  const totalIncAngle = Math.sqrt(incX * incX + incY * incY); // 총 입사각
+  const totalIncAngleRad = Math.sqrt(incX * incX + incY * incY);
+  const totalIncAngleDeg = (totalIncAngleRad * 180) / Math.PI;
 
-  // 도파(Guided Mode) 조건 판별: 수용각 이내여야 함
-  const isGuided = totalIncAngle <= maxAcceptanceAngle;
+  // 가로/세로 모드 차수(m, n) 계산
+  const mMax = Math.max(0, Math.floor((2 * params.core1.w / params.laser.wavelength) * NA));
+  const nMax = Math.max(0, Math.floor((2 * params.core1.h / params.laser.wavelength) * NA));
 
-  // 4. 전반사 조건 불만족 시 내부 빛 및 파동 요소 완전 차단 (Invisible)
+  // 전반사 조건 검증: 입사각이 수용각 이내여야 함
+  const isGuided = totalIncAngleRad <= maxAcceptanceAngleRad && NA > 0;
+
+  // UI 상태 업데이트
+  if (isGuided) {
+    modeOverlay.innerHTML = `
+      <div style="color: #38bdf8; font-weight: bold; margin-bottom: 4px;">Propagation Status: <span style="color: #4ade80;">GUIDED (TIR Active)</span></div>
+      <div>Mode Numbers: <b>TE<sub>${mMax},${nMax}</sub></b> (m=${mMax}, n=${nMax})</div>
+      <div style="font-size: 11px; color: #94a3b8; margin-top: 2px;">Incident Angle: ${totalIncAngleDeg.toFixed(1)}° / Max Acceptance: ${maxAcceptanceAngleDeg.toFixed(1)}°</div>
+    `;
+  } else {
+    modeOverlay.innerHTML = `
+      <div style="color: #f87171; font-weight: bold; margin-bottom: 4px;">Propagation Status: <span style="color: #f87171;">RADIATION LOSS (No TIR)</span></div>
+      <div style="color: #94a3b8;">Mode Numbers: <b>N/A (Cutoff)</b></div>
+      <div style="font-size: 11px; color: #f87171; margin-top: 2px;">Incident Angle (${totalIncAngleDeg.toFixed(1)}°) Exceeds Acceptance Limit (${maxAcceptanceAngleDeg.toFixed(1)}°)</div>
+    `;
+  }
+
+  // 전반사가 일어나지 않을 때: 모든 내부 시각화 요소 완전 차단 및 데이터 초기화
   if (!isGuided) {
     if (guidedRedBeamMesh) guidedRedBeamMesh.visible = false;
     if (emVectorGroup) emVectorGroup.visible = false;
-    if (waveLineMesh) waveLineMesh.visible = false;
+    
+    if (waveLineMesh) {
+      waveLineMesh.visible = false;
+      const positions = waveLineMesh.geometry.attributes.position.array;
+      for (let i = 0; i < positions.length; i++) positions[i] = 0;
+      waveLineMesh.geometry.attributes.position.needsUpdate = true;
+    }
   } else {
     if (guidedRedBeamMesh) guidedRedBeamMesh.visible = true;
     if (emVectorGroup) emVectorGroup.visible = true;
     if (waveLineMesh) waveLineMesh.visible = true;
 
-    // 5. 스넬의 법칙 굴절각 계산
     const refrX = Math.asin((n1 / n2) * Math.sin(incX));
     const refrY = Math.asin((n1 / n2) * Math.sin(incY));
 
-    // K-vector 및 TE 모드 전자기장 방향 계산
     const kDir = new THREE.Vector3(0, 0, 1);
     kDir.applyEuler(new THREE.Euler(-refrX, refrY, 0, 'XYZ')).normalize();
 
@@ -470,9 +510,8 @@ function animate() {
 
     const baseH = new THREE.Vector3().crossVectors(kDir, baseE).normalize();
 
-    const couplingEff = Math.cos((totalIncAngle / maxAcceptanceAngle) * (Math.PI / 2));
+    const couplingEff = Math.cos((totalIncAngleRad / maxAcceptanceAngleRad) * (Math.PI / 2));
 
-    // 6. 가이드 빔 갱신
     if (guidedRedBeamMesh) {
       guidedRedBeamMesh.rotation.order = 'XYZ';
       guidedRedBeamMesh.rotation.set(-refrX, refrY, 0);
@@ -483,7 +522,6 @@ function animate() {
       guidedRedBeamMat.emissiveIntensity = (0.5 + 1.2 * intensityFactor) * couplingEff;
     }
 
-    // 7. 전자기장 화살표 동적 갱신
     if (emVectorGroup) {
       emVectorGroup.children.forEach((arrow) => {
         const zPos = arrow.userData.zPos;
@@ -512,7 +550,6 @@ function animate() {
       });
     }
 
-    // 8. 레이저 원통의 가장 끝 중심점에서 이어지는 연속 파동선(Red Sine Wave) 갱신
     if (waveLineMesh) {
       const positions = waveLineMesh.geometry.attributes.position.array;
       const pointCount = positions.length / 3;
@@ -526,7 +563,6 @@ function animate() {
         
         const waveOffset = baseE.clone().multiplyScalar(Math.sin(phase) * amplitude);
         
-        // 레이저 끝단 입사점(inputX, inputY, inputZ)에서 바로 연장
         const centerPos = new THREE.Vector3(
           inputX + zOffset * Math.tan(refrY),
           inputY - zOffset * Math.tan(refrX),
@@ -544,7 +580,6 @@ function animate() {
     }
   }
 
-  // 외부 레이저 입력 펄스 애니메이션
   if (laserBeamMat) {
     const pulseFactor = 0.5 + 0.5 * Math.sin(t * omega);
     laserBeamMat.emissiveIntensity = params.laser.intensity * pulseFactor;
