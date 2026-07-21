@@ -1,14 +1,9 @@
-// 1. Main Scene, Camera, Renderer 설정
+// 1. Scene, Camera, Renderer 및 Controls
 const container = document.getElementById('canvas-container');
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x0f172a);
 
-const camera = new THREE.PerspectiveCamera(
-  45,
-  window.innerWidth / window.innerHeight,
-  0.1,
-  1000
-);
+const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
 camera.position.set(3.5, 2.5, 4.5);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -18,12 +13,9 @@ container.appendChild(renderer.domElement);
 
 const controls = new THREE.OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
-controls.dampingFactor = 0.05;
 
-// Light
-const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
-scene.add(ambientLight);
-
+// Lighting
+scene.add(new THREE.AmbientLight(0xffffff, 0.7));
 const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
 dirLight.position.set(5, 10, 7);
 scene.add(dirLight);
@@ -32,565 +24,235 @@ const gridHelper = new THREE.GridHelper(10, 20, 0x334155, 0x1e293b);
 gridHelper.position.y = -0.5;
 scene.add(gridHelper);
 
-// 2. 우측 상단 XYZ 좌표축 Mini-Scene
-const axisContainer = document.getElementById('axis-container');
-const axisScene = new THREE.Scene();
-const axisCamera = new THREE.PerspectiveCamera(50, 1, 0.1, 10);
-axisCamera.position.set(0, 0, 2.5);
+// 2. 우측 하단 2D 단면 전기장 히트맵 Canvas 생성
+function createCrossSectionCanvas() {
+  let panel = document.getElementById('cross-section-panel');
+  if (!panel) {
+    panel = document.createElement('div');
+    panel.id = 'cross-section-panel';
+    panel.style.position = 'absolute';
+    panel.style.bottom = '20px';
+    panel.style.right = '20px';
+    panel.style.padding = '12px';
+    panel.style.background = 'rgba(15, 23, 42, 0.9)';
+    panel.style.border = '1px solid #334155';
+    panel.style.borderRadius = '8px';
+    panel.style.color = '#f8fafc';
+    panel.style.fontFamily = 'sans-serif';
+    panel.style.fontSize = '12px';
+    panel.style.zIndex = '100';
 
-const axisRenderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
-axisRenderer.setSize(120, 120);
-axisContainer.appendChild(axisRenderer.domElement);
+    const title = document.createElement('div');
+    title.style.fontWeight = 'bold';
+    title.style.marginBottom = '8px';
+    title.style.color = '#38bdf8';
+    title.textContent = 'Output Cross-Section |E(x,y)| Intensity';
+    panel.appendChild(title);
 
-function createTextSprite(text, colorHex) {
-  const canvas = document.createElement('canvas');
-  canvas.width = 64;
-  canvas.height = 64;
-  const ctx = canvas.getContext('2d');
+    const cvs = document.createElement('canvas');
+    cvs.id = 'cross-section-canvas';
+    cvs.width = 220;
+    cvs.height = 180;
+    cvs.style.borderRadius = '4px';
+    cvs.style.background = '#020617';
+    panel.appendChild(cvs);
 
-  ctx.font = 'Bold 44px sans-serif';
-  ctx.fillStyle = colorHex;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(text, 32, 32);
+    const legend = document.createElement('div');
+    legend.style.marginTop = '6px';
+    legend.style.display = 'flex';
+    legend.style.justifyContent = 'space-between';
+    legend.style.fontSize = '10px';
+    legend.style.color = '#94a3b8';
+    legend.innerHTML = '<span>Weak (Light Blue)</span><span>Strong (Red)</span>';
+    panel.appendChild(legend);
 
-  const texture = new THREE.CanvasTexture(canvas);
-  const spriteMaterial = new THREE.SpriteMaterial({ map: texture, depthTest: false });
-  const sprite = new THREE.Sprite(spriteMaterial);
-  sprite.scale.set(0.35, 0.35, 1);
-  return sprite;
-}
-
-function createAxesGizmo() {
-  const group = new THREE.Group();
-  const dirX = new THREE.Vector3(1, 0, 0);
-  const dirY = new THREE.Vector3(0, 1, 0);
-  const dirZ = new THREE.Vector3(0, 0, 1);
-  const origin = new THREE.Vector3(0, 0, 0);
-
-  const arrowX = new THREE.ArrowHelper(dirX, origin, 0.8, 0xef4444, 0.2, 0.15); 
-  const arrowY = new THREE.ArrowHelper(dirY, origin, 0.8, 0x22c55e, 0.2, 0.15); 
-  const arrowZ = new THREE.ArrowHelper(dirZ, origin, 0.8, 0x3b82f6, 0.2, 0.15); 
-
-  group.add(arrowX);
-  group.add(arrowY);
-  group.add(arrowZ);
-
-  const labelX = createTextSprite('X', '#22c55e');
-  labelX.position.set(0, 1.0, 0);
-
-  const labelY = createTextSprite('Y', '#ef4444');
-  labelY.position.set(1.0, 0, 0);
-
-  const labelZ = createTextSprite('Z', '#3b82f6');
-  labelZ.position.set(0, 0, 1.0);
-
-  group.add(labelX);
-  group.add(labelY);
-  group.add(labelZ);
-
-  return group;
-}
-
-const axisGizmo = createAxesGizmo();
-axisScene.add(axisGizmo);
-
-// 3. Mode Number Overlay UI 생성
-function createModeOverlayUI() {
-  let modeDiv = document.getElementById('mode-info-overlay');
-  if (!modeDiv) {
-    modeDiv = document.createElement('div');
-    modeDiv.id = 'mode-info-overlay';
-    modeDiv.style.position = 'absolute';
-    modeDiv.style.top = '20px';
-    modeDiv.style.left = '20px';
-    modeDiv.style.padding = '12px 16px';
-    modeDiv.style.background = 'rgba(15, 23, 42, 0.85)';
-    modeDiv.style.border = '1px solid #334155';
-    modeDiv.style.borderRadius = '8px';
-    modeDiv.style.color = '#f8fafc';
-    modeDiv.style.fontFamily = 'sans-serif';
-    modeDiv.style.fontSize = '13px';
-    modeDiv.style.zIndex = '100';
-    modeDiv.style.backdropFilter = 'blur(4px)';
-    document.body.appendChild(modeDiv);
+    document.body.appendChild(panel);
   }
-  return modeDiv;
 }
-const modeOverlay = createModeOverlayUI();
+createCrossSectionCanvas();
 
-// 4. 파라미터 상태
+// 3. 파라미터 관리
 const SCALE = 0.001;
-
 let params = {
   nCore: 3.45,
   nCladd: 1.45,
   core1: { w: 450, h: 220, l: 3000 },
   sub: { w: 2500, h: 400, l: 3000 },
   top: { w: 2500, h: 600, l: 3000 },
-  laser: {
-    wavelength: 1550,
-    rotX: 0,
-    rotY: 0,
-    pulseWidth: 30,
-    intensity: 1.0
-  }
+  laser: { wavelength: 1550, rotX: 0, rotY: 0, intensity: 1.0 }
 };
 
-// Material 설정
-const coreMat = new THREE.MeshStandardMaterial({
-  color: 0x38bdf8,
-  roughness: 0.2,
-  metalness: 0.8,
-  emissive: 0x0284c7,
-  emissiveIntensity: 0.2,
-  transparent: true,
-  opacity: 0.45
-});
+// Material
+const coreMat = new THREE.MeshStandardMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.4 });
+const subMat = new THREE.MeshStandardMaterial({ color: 0x64748b, transparent: true, opacity: 0.3 });
+const topMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, transparent: true, opacity: 0.15 });
+const wireMat = new THREE.LineBasicMaterial({ color: 0xf8fafc });
 
-const subMat = new THREE.MeshStandardMaterial({
-  color: 0x64748b,
-  transparent: true,
-  opacity: 0.35,
-  roughness: 0.1
-});
+let core1Mesh, subMesh, topMesh;
 
-const topMat = new THREE.MeshStandardMaterial({
-  color: 0x94a3b8,
-  transparent: true,
-  opacity: 0.15,
-  roughness: 0.1
-});
-
-const wireframeMat = new THREE.LineBasicMaterial({ color: 0xf8fafc, linewidth: 1 });
-
-const guidedRedBeamMat = new THREE.MeshStandardMaterial({
-  color: 0xef4444,
-  emissive: 0xef4444,
-  emissiveIntensity: 1.0,
-  transparent: true,
-  opacity: 0.4
-});
-
-let core1Mesh, subMesh, topMesh, laserBeamMesh, laserBeamMat;
-let guidedRedBeamMesh; 
-let emVectorGroup;
-let waveLineMesh;
-
-// 5. 3D 메쉬 생성
-function buildStructure() {
-  if (core1Mesh) { scene.remove(core1Mesh); core1Mesh.geometry.dispose(); }
-  if (subMesh) { scene.remove(subMesh); subMesh.geometry.dispose(); }
-  if (topMesh) { scene.remove(topMesh); topMesh.geometry.dispose(); }
-  if (laserBeamMesh) { scene.remove(laserBeamMesh); laserBeamMesh.geometry.dispose(); }
-  if (guidedRedBeamMesh) { scene.remove(guidedRedBeamMesh); guidedRedBeamMesh.geometry.dispose(); }
-  if (emVectorGroup) { scene.remove(emVectorGroup); }
-  if (waveLineMesh) { scene.remove(waveLineMesh); waveLineMesh.geometry.dispose(); }
+function build3DScene() {
+  if (core1Mesh) scene.remove(core1Mesh);
+  if (subMesh) scene.remove(subMesh);
+  if (topMesh) scene.remove(topMesh);
 
   const c1W = params.core1.w * SCALE;
   const c1H = params.core1.h * SCALE;
   const c1L = params.core1.l * SCALE;
 
-  // A. Core 1
-  const core1Geo = new THREE.BoxGeometry(c1W, c1H, c1L);
-  core1Mesh = new THREE.Mesh(core1Geo, coreMat);
+  // Core 1
+  const cGeo = new THREE.BoxGeometry(c1W, c1H, c1L);
+  core1Mesh = new THREE.Mesh(cGeo, coreMat);
   core1Mesh.position.set(0, c1H / 2, 0);
-
-  const wfGeo1 = new THREE.EdgesGeometry(core1Geo);
-  core1Mesh.add(new THREE.LineSegments(wfGeo1, wireframeMat));
+  core1Mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(cGeo), wireMat));
   scene.add(core1Mesh);
 
-  // B. Substrate
-  const subW = params.sub.w * SCALE;
+  // Substrate & Top Cladding
   const subH = params.sub.h * SCALE;
-  const subL = params.sub.l * SCALE;
-  subMesh = new THREE.Mesh(new THREE.BoxGeometry(subW, subH, subL), subMat);
+  subMesh = new THREE.Mesh(new THREE.BoxGeometry(params.sub.w * SCALE, subH, c1L), subMat);
   subMesh.position.set(0, -subH / 2, 0);
   scene.add(subMesh);
 
-  // C. Upper Cladding
-  const topW = params.top.w * SCALE;
   const topH = params.top.h * SCALE;
-  const topL = params.top.l * SCALE;
-  topMesh = new THREE.Mesh(new THREE.BoxGeometry(topW, topH, topL), topMat);
+  topMesh = new THREE.Mesh(new THREE.BoxGeometry(params.top.w * SCALE, topH, c1L), topMat);
   topMesh.position.set(0, topH / 2, 0);
   scene.add(topMesh);
-
-  // D. 레이저 빔
-  buildStraightLaserBeam(c1W, c1H, c1L);
-
-  // E. 도파로 내부 진행 빔
-  buildGuidedRedBeam(c1W, c1H, c1L);
-
-  // F. TE 모드 전자기장 화살표
-  buildTEFieldVectors(c1W, c1H, c1L);
-
-  // G. 연속 파동선
-  buildWaveLine(c1W, c1H, c1L);
-
-  drawSpectrumGraph();
 }
+build3DScene();
 
-function buildStraightLaserBeam(c1W, c1H, c1L) {
-  const beamLength = 1.5; 
-  const beamRadius = 0.04;
+// 4. 출력 단면 전반사 위상변화 & 에바네센트 2D 전기장 계산 함수
+function drawCrossSectionField(t) {
+  const cvs = document.getElementById('cross-section-canvas');
+  if (!cvs) return;
+  const ctx = cvs.getContext('2d');
+  const W = cvs.width;
+  const H = cvs.height;
 
-  const beamGeo = new THREE.CylinderGeometry(beamRadius, beamRadius, beamLength, 32);
-  beamGeo.translate(0, -beamLength / 2, 0);
-  beamGeo.rotateX(Math.PI / 2);
-  
-  laserBeamMat = new THREE.MeshStandardMaterial({
-    color: 0xef4444,
-    emissive: 0xef4444,
-    emissiveIntensity: params.laser.intensity,
-    transparent: true,
-    opacity: 0.85
-  });
+  ctx.clearRect(0, 0, W, H);
 
-  laserBeamMesh = new THREE.Mesh(beamGeo, laserBeamMat);
-  scene.add(laserBeamMesh);
-}
+  const n1 = params.nCladd;
+  const n2 = params.nCore;
+  const incX = (params.laser.rotX * Math.PI) / 180;
+  const incY = (params.laser.rotY * Math.PI) / 180;
 
-function buildGuidedRedBeam(c1W, c1H, c1L) {
-  const beamRadius = Math.min(c1W, c1H) * 0.25;
-  const beamGeo = new THREE.CylinderGeometry(beamRadius, beamRadius, c1L, 32);
-  beamGeo.rotateX(Math.PI / 2);
+  // 1. 스넬의 법칙 및 굴절 각도
+  const refrX = Math.asin(Math.min(1.0, (n1 / n2) * Math.sin(incX)));
+  const refrY = Math.asin(Math.min(1.0, (n1 / n2) * Math.sin(incY)));
 
-  guidedRedBeamMesh = new THREE.Mesh(beamGeo, guidedRedBeamMat);
-  scene.add(guidedRedBeamMesh);
-}
-
-function buildTEFieldVectors(c1W, c1H, c1L) {
-  emVectorGroup = new THREE.Group();
-
-  const numSamplePoints = 16;
-  const stepZ = c1L / (numSamplePoints - 1);
-
-  for (let i = 0; i < numSamplePoints; i++) {
-    const zPos = -c1L / 2 + i * stepZ;
-    const origin = new THREE.Vector3(0, c1H / 2, zPos);
-
-    const arrowE = new THREE.ArrowHelper(new THREE.Vector3(1, 0, 0), origin, 0.2, 0xf87171, 0.08, 0.05);
-    const arrowH = new THREE.ArrowHelper(new THREE.Vector3(0, 1, 0), origin, 0.2, 0x4ade80, 0.08, 0.05);
-
-    arrowE.userData = { index: i, zPos: zPos, type: 'E' };
-    arrowH.userData = { index: i, zPos: zPos, type: 'H' };
-
-    emVectorGroup.add(arrowE);
-    emVectorGroup.add(arrowH);
+  // 2. 전반사에 의한 프레넬 위상 지연 (Phase Shift δ)
+  const thetaX = Math.PI / 2 - refrY; // 입사각
+  let deltaPhaseX = 0;
+  if (Math.sin(thetaX) > n1 / n2) {
+    const num = Math.sqrt(n2 * n2 * Math.sin(thetaX) ** 2 - n1 * n1);
+    const den = n2 * Math.cos(thetaX);
+    deltaPhaseX = 2 * Math.atan(num / den); // TE 모드 전반사 위상차
   }
 
-  scene.add(emVectorGroup);
-}
+  // 3. 전파 상수 및 에바네센트 감쇠 계수 γ (Gamma)
+  const k0 = (2 * Math.PI) / (params.laser.wavelength * 1e-9);
+  const beta = k0 * n2 * Math.cos(refrY);
+  const gammaX = Math.sqrt(Math.max(0, beta * beta - (k0 * n1) ** 2)) * SCALE * 0.8;
+  const gammaY = Math.sqrt(Math.max(0, beta * beta - (k0 * n1) ** 2)) * SCALE * 0.8;
 
-function buildWaveLine(c1W, c1H, c1L) {
-  const pointCount = 200;
-  const geometry = new THREE.BufferGeometry();
-  const positions = new Float32Array(pointCount * 3);
+  const coreW = params.core1.w;
+  const coreH = params.core1.h;
 
-  geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  const imgData = ctx.createImageData(W, H);
+  const data = imgData.data;
 
-  const lineMat = new THREE.LineBasicMaterial({
-    color: 0xef4444,
-    linewidth: 2,
-    transparent: true,
-    opacity: 0.95
-  });
+  // 4. 2D 픽셀 루프 연산
+  for (let py = 0; py < H; py++) {
+    for (let px = 0; px < W; px++) {
+      // Canvas 좌표 -> Physical nm 좌표 변환 (중심 0,0)
+      const x = ((px - W / 2) / (W / 2)) * (coreW * 1.8);
+      const y = (((H / 2) - py) / (H / 2)) * (coreH * 1.8);
 
-  waveLineMesh = new THREE.Line(geometry, lineMat);
-  scene.add(waveLineMesh);
-}
+      const absX = Math.abs(x);
+      const absY = Math.abs(y);
 
-function drawSpectrumGraph() {
-  const canvas = document.getElementById('spectrum-canvas');
-  if (!canvas) return;
-  const ctx = canvas.getContext('2d');
-  
-  const w = canvas.width;
-  const h = canvas.height;
+      let fieldX = 0;
+      let fieldY = 0;
 
-  ctx.clearRect(0, 0, w, h);
+      // X축 전계 (전반사 위상 지연 deltaPhaseX 및 에바네센트 감쇠 반영)
+      if (absX <= coreW / 2) {
+        fieldX = Math.cos((Math.PI / coreW) * x - deltaPhaseX * 0.1);
+      } else {
+        const boundaryVal = Math.cos(Math.PI / 2 - deltaPhaseX * 0.1);
+        fieldX = boundaryVal * Math.exp(-gammaX * (absX - coreW / 2));
+      }
 
-  const lambda0 = params.laser.wavelength;
-  const deltaLambda = params.laser.pulseWidth;
-  const I0 = params.laser.intensity;
+      // Y축 전계
+      if (absY <= coreH / 2) {
+        fieldY = Math.cos((Math.PI / coreH) * y);
+      } else {
+        fieldY = Math.exp(-gammaY * (absY - coreH / 2));
+      }
 
-  ctx.strokeStyle = '#475569';
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(30, 10);
-  ctx.lineTo(30, h - 20);
-  ctx.lineTo(w - 10, h - 20);
-  ctx.stroke();
+      // 시간 및 전체 전기장 크기 |E|
+      const omega = 8.0;
+      const phaseZ = beta * (params.core1.l * SCALE) - omega * t;
+      const E_val = Math.abs(params.laser.intensity * fieldX * fieldY * Math.sin(phaseZ));
 
-  ctx.fillStyle = '#94a3b8';
-  ctx.font = '10px sans-serif';
-  ctx.fillText('I', 10, 15);
-  ctx.fillText('λ (nm)', w - 35, h - 5);
+      // HSL Color Mapping (파란색 -> 주황색 -> 빨간색)
+      // E_val: 0.0 -> H:200 (Light Blue), E_val: 1.0 -> H:0 (Red)
+      const hue = (1.0 - Math.min(1.0, E_val)) * 200; 
+      const lightness = 40 + E_val * 20; // 40% ~ 60%
 
-  ctx.strokeStyle = '#ef4444';
-  ctx.fillStyle = 'rgba(239, 68, 68, 0.2)';
-  ctx.lineWidth = 2;
-  ctx.beginPath();
+      const [r, g, b] = hslToRgb(hue / 360, 0.9, lightness / 100);
 
-  const minLambda = 700;
-  const maxLambda = 1800;
-
-  let started = false;
-  for (let px = 30; px <= w - 10; px++) {
-    const lam = minLambda + ((px - 30) / (w - 40)) * (maxLambda - minLambda);
-    const sigma = deltaLambda / 2.355;
-    const intensity = I0 * Math.exp(-Math.pow(lam - lambda0, 2) / (2 * Math.pow(sigma, 2)));
-
-    const py = (h - 20) - (intensity / 3.0) * (h - 30);
-
-    if (!started) {
-      ctx.moveTo(px, py);
-      started = true;
-    } else {
-      ctx.lineTo(px, py);
+      const idx = (py * W + px) * 4;
+      data[idx] = r;
+      data[idx + 1] = g;
+      data[idx + 2] = b;
+      data[idx + 3] = 255; // Alpha
     }
   }
-  ctx.stroke();
 
-  ctx.lineTo(w - 10, h - 20);
-  ctx.lineTo(30, h - 20);
-  ctx.closePath();
-  ctx.fill();
+  ctx.putImageData(imgData, 0, 0);
+
+  // 도파로 코어 경계 가이드 라인 그려주기
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+  ctx.lineWidth = 1;
+  const corePxW = (coreW / (coreW * 3.6)) * W * 2;
+  const corePxH = (coreH / (coreH * 3.6)) * H * 2;
+  ctx.strokeRect((W - corePxW) / 2, (H - corePxH) / 2, corePxW, corePxH);
 }
 
-buildStructure();
-
-// 슬라이더 바인딩
-function bindSlider(id, targetObj, key, displayId) {
-  const slider = document.getElementById(id);
-  const display = document.getElementById(displayId);
-  slider.addEventListener('input', (e) => {
-    const val = parseFloat(e.target.value);
-    targetObj[key] = val;
-    display.textContent = val;
-    buildStructure();
-  });
+// HSL to RGB 변환 헬퍼 함수
+function hslToRgb(h, s, l) {
+  let r, g, b;
+  if (s === 0) {
+    r = g = b = l;
+  } else {
+    const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+    const p = 2 * l - q;
+    r = hue2rgb(p, q, h + 1 / 3);
+    g = hue2rgb(p, q, h);
+    b = hue2rgb(p, q, h - 1 / 3);
+  }
+  return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
 }
 
-bindSlider('w-core-slider', params.core1, 'w', 'w-core-val');
-bindSlider('h-core-slider', params.core1, 'h', 'h-core-val');
-bindSlider('l-core-slider', params.core1, 'l', 'l-core-val');
+function hue2rgb(p, q, t) {
+  if (t < 0) t += 1;
+  if (t > 1) t -= 1;
+  if (t < 1 / 6) return p + (q - p) * 6 * t;
+  if (t < 1 / 2) return q;
+  if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+  return p;
+}
 
-bindSlider('w-sub-slider', params.sub, 'w', 'w-sub-val');
-bindSlider('h-sub-slider', params.sub, 'h', 'h-sub-val');
-bindSlider('l-sub-slider', params.sub, 'l', 'l-sub-val');
-
-bindSlider('w-top-slider', params.top, 'w', 'w-top-val');
-bindSlider('h-top-slider', params.top, 'h', 'h-top-val');
-bindSlider('l-top-slider', params.top, 'l', 'l-top-val');
-
-bindSlider('wavelength-slider', params.laser, 'wavelength', 'wavelength-val');
-bindSlider('rot-x-slider', params.laser, 'rotX', 'rot-x-val');
-bindSlider('rot-y-slider', params.laser, 'rotY', 'rot-y-val');
-bindSlider('pulse-width-slider', params.laser, 'pulseWidth', 'pulse-width-val');
-bindSlider('intensity-slider', params.laser, 'intensity', 'intensity-val');
-
-document.getElementById('n-core-slider').addEventListener('input', (e) => {
-  params.nCore = parseFloat(e.target.value);
-  document.getElementById('n-core-val').textContent = params.nCore;
-  buildStructure();
-});
-
-document.getElementById('n-cladd-slider').addEventListener('input', (e) => {
-  params.nCladd = parseFloat(e.target.value);
-  document.getElementById('n-cladd-val').textContent = params.nCladd;
-  buildStructure();
-});
-
-window.setCoreMaterial = function(name, nVal) {
-  params.nCore = nVal;
-  document.getElementById('n-core-slider').value = nVal;
-  document.getElementById('n-core-val').textContent = nVal;
-  buildStructure();
-};
-
-window.setCladdMaterial = function(name, nVal) {
-  params.nCladd = nVal;
-  document.getElementById('n-cladd-slider').value = nVal;
-  document.getElementById('n-cladd-val').textContent = nVal;
-  buildStructure();
-};
-
-window.toggleLaserPanel = function() {
-  const panel = document.getElementById('laser-panel');
-  panel.style.display = (panel.style.display === 'none' || panel.style.display === '') ? 'block' : 'none';
-};
-
-// 8. 실시간 애니메이션 루프 (전자기장 화살표 3D 공간 회전 각도 실시간 반영)
-let clock = new THREE.Clock();
-
+// 5. 애니메이션 루프
+const clock = new THREE.Clock();
 function animate() {
   requestAnimationFrame(animate);
 
   const t = clock.getElapsedTime();
-  const omega = 8.0;
-  const beta = 12.0;
 
-  const c1W = params.core1.w * SCALE;
-  const c1H = params.core1.h * SCALE;
-  const c1L = params.core1.l * SCALE;
-
-  const incX = (params.laser.rotX * Math.PI) / 180;
-  const incY = (params.laser.rotY * Math.PI) / 180;
-
-  const inputZ = -c1L / 2;
-  const inputX = 0;
-  const inputY = c1H / 2;
-
-  if (laserBeamMesh) {
-    laserBeamMesh.position.set(inputX, inputY, inputZ);
-    laserBeamMesh.rotation.order = 'XYZ';
-    laserBeamMesh.rotation.set(-incX, incY, 0);
-  }
-
-  const n1 = params.nCladd;
-  const n2 = params.nCore;
-
-  const NA = Math.sqrt(Math.max(0, n2 * n2 - n1 * n1));
-  const maxAcceptanceAngleRad = Math.asin(Math.min(1.0, NA / n1));
-  const maxAcceptanceAngleDeg = (maxAcceptanceAngleRad * 180) / Math.PI;
-
-  const totalIncAngleRad = Math.sqrt(incX * incX + incY * incY);
-  const totalIncAngleDeg = (totalIncAngleRad * 180) / Math.PI;
-
-  const mMax = Math.max(0, Math.floor((2 * params.core1.w / params.laser.wavelength) * NA));
-  const nMax = Math.max(0, Math.floor((2 * params.core1.h / params.laser.wavelength) * NA));
-
-  const isGuided = totalIncAngleRad <= maxAcceptanceAngleRad && NA > 0;
-
-  if (isGuided) {
-    modeOverlay.innerHTML = `
-      <div style="color: #38bdf8; font-weight: bold; margin-bottom: 4px;">Propagation Status: <span style="color: #4ade80;">GUIDED (TIR Active)</span></div>
-      <div>Mode Numbers: <b>TE<sub>${mMax},${nMax}</sub></b> (m=${mMax}, n=${nMax})</div>
-      <div style="font-size: 11px; color: #94a3b8; margin-top: 2px;">Incident Angle: ${totalIncAngleDeg.toFixed(1)}° / Max Acceptance: ${maxAcceptanceAngleDeg.toFixed(1)}°</div>
-    `;
-  } else {
-    modeOverlay.innerHTML = `
-      <div style="color: #f87171; font-weight: bold; margin-bottom: 4px;">Propagation Status: <span style="color: #f87171;">RADIATION LOSS (No TIR)</span></div>
-      <div style="color: #94a3b8;">Mode Numbers: <b>N/A (Cutoff)</b></div>
-      <div style="font-size: 11px; color: #f87171; margin-top: 2px;">Incident Angle (${totalIncAngleDeg.toFixed(1)}°) Exceeds Acceptance Limit (${maxAcceptanceAngleDeg.toFixed(1)}°)</div>
-    `;
-  }
-
-  if (!isGuided) {
-    if (guidedRedBeamMesh) guidedRedBeamMesh.visible = false;
-    if (emVectorGroup) emVectorGroup.visible = false;
-    
-    if (waveLineMesh) {
-      waveLineMesh.visible = false;
-      const positions = waveLineMesh.geometry.attributes.position.array;
-      for (let i = 0; i < positions.length; i++) positions[i] = 0;
-      waveLineMesh.geometry.attributes.position.needsUpdate = true;
-    }
-  } else {
-    if (guidedRedBeamMesh) guidedRedBeamMesh.visible = true;
-    if (emVectorGroup) emVectorGroup.visible = true;
-    if (waveLineMesh) waveLineMesh.visible = true;
-
-    // 1. 3D 스넬의 법칙 굴절각 계산
-    const refrX = Math.asin((n1 / n2) * Math.sin(incX));
-    const refrY = Math.asin((n1 / n2) * Math.sin(incY));
-
-    // 2. 굴절 회전 오일러 각 생성
-    const eulerRotation = new THREE.Euler(refrX, refrY, 0, 'XYZ');
-
-    // K-벡터 (진행 방향)
-    const kDir = new THREE.Vector3(0, 0, 1).applyEuler(eulerRotation).normalize();
-
-    // TE 모드 기본 전기장(Ex) 및 자기장(Hy) 베이스 3D 회전 적용
-    const baseE = new THREE.Vector3(1, 0, 0).applyEuler(eulerRotation).normalize();
-    const baseH = new THREE.Vector3().crossVectors(kDir, baseE).normalize();
-
-    const couplingEff = Math.cos((totalIncAngleRad / maxAcceptanceAngleRad) * (Math.PI / 2));
-
-    if (guidedRedBeamMesh) {
-      guidedRedBeamMesh.rotation.order = 'XYZ';
-      guidedRedBeamMesh.rotation.set(refrX, refrY, 0);
-      guidedRedBeamMesh.position.set(0, c1H / 2, 0);
-      
-      const intensityFactor = 0.3 + 0.6 * (0.5 + 0.5 * Math.sin(t * omega));
-      guidedRedBeamMat.opacity = intensityFactor * params.laser.intensity * couplingEff * 0.5;
-      guidedRedBeamMat.emissiveIntensity = (0.5 + 1.2 * intensityFactor) * couplingEff;
-    }
-
-    // 3. 전자기장 화살표 벡터 3D 각도 기울기 실시간 반영
-    if (emVectorGroup) {
-      emVectorGroup.children.forEach((arrow) => {
-        const zPos = arrow.userData.zPos;
-        const zOffset = zPos - inputZ;
-        
-        const shiftX = zOffset * Math.tan(refrY);
-        const shiftY = zOffset * Math.tan(refrX);
-
-        arrow.position.set(inputX + shiftX, inputY + shiftY, zPos);
-
-        const phase = beta * zPos - omega * t;
-        const fieldVal = Math.sin(phase);
-
-        const maxLen = 0.35 * couplingEff;
-        const currentLen = Math.abs(fieldVal) * maxLen + 0.02;
-
-        if (arrow.userData.type === 'E') {
-          // [핵심] 굴절된 3D baseE 방향을 기반으로 화살표 방향 및 회전 연동
-          const dir = fieldVal >= 0 ? baseE.clone() : baseE.clone().negate();
-          arrow.setDirection(dir);
-          arrow.setLength(currentLen, currentLen * 0.3, currentLen * 0.2);
-        } else if (arrow.userData.type === 'H') {
-          // [핵심] 굴절된 3D baseH 방향을 기반으로 화살표 방향 및 회전 연동
-          const dir = fieldVal >= 0 ? baseH.clone() : baseH.clone().negate();
-          arrow.setDirection(dir);
-          arrow.setLength(currentLen, currentLen * 0.3, currentLen * 0.2);
-        }
-      });
-    }
-
-    if (waveLineMesh) {
-      const positions = waveLineMesh.geometry.attributes.position.array;
-      const pointCount = positions.length / 3;
-      const stepZ = c1L / (pointCount - 1);
-      const amplitude = 0.08 * couplingEff;
-
-      for (let i = 0; i < pointCount; i++) {
-        const zOffset = i * stepZ;
-        const zLocal = inputZ + zOffset;
-        const phase = beta * zLocal - omega * t;
-        
-        const waveOffset = baseE.clone().multiplyScalar(Math.sin(phase) * amplitude);
-        
-        const centerPos = new THREE.Vector3(
-          inputX + zOffset * Math.tan(refrY),
-          inputY + zOffset * Math.tan(refrX),
-          zLocal
-        );
-
-        const finalPos = centerPos.add(waveOffset);
-
-        positions[i * 3]     = finalPos.x;
-        positions[i * 3 + 1] = finalPos.y;
-        positions[i * 3 + 2] = finalPos.z;
-      }
-
-      waveLineMesh.geometry.attributes.position.needsUpdate = true;
-    }
-  }
-
-  if (laserBeamMat) {
-    const pulseFactor = 0.5 + 0.5 * Math.sin(t * omega);
-    laserBeamMat.emissiveIntensity = params.laser.intensity * pulseFactor;
-    laserBeamMat.opacity = 0.4 + 0.5 * pulseFactor;
-  }
-
-  axisGizmo.quaternion.copy(camera.quaternion).invert();
+  // 출력 단면 2D 전기장 히트맵 갱신
+  drawCrossSectionField(t);
 
   controls.update();
   renderer.render(scene, camera);
-  axisRenderer.render(axisScene, axisCamera);
 }
 animate();
 
