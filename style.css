@@ -33,7 +33,6 @@ body {
   overflow-y: auto;
 }
 
-/* 스크롤바 스타일 */
 #ui-panel::-webkit-scrollbar {
   width: 6px;
 }
@@ -54,7 +53,13 @@ h2 {
   color: #f1f5f9;
   margin-bottom: 8px;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+}
+
+.sub-title {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #38bdf8;
+  margin: 10px 0 4px 0;
 }
 
 .divider {
@@ -93,6 +98,34 @@ h2 {
   background: #38bdf8;
   color: #0f172a;
   font-weight: 600;
+}
+
+/* 레이저 전용 접기/펼치기 버튼 및 패널 */
+.btn-toggle {
+  width: 100%;
+  background: #0284c7;
+  color: #fff;
+  border: none;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.2s;
+  margin-bottom: 8px;
+}
+
+.btn-toggle:hover {
+  background: #0369a1;
+}
+
+.collapsible-content {
+  display: block;
+  background: rgba(15, 23, 42, 0.5);
+  padding: 10px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
 }
 
 .control-group {

@@ -61,7 +61,7 @@
 
     <hr class="divider">
 
-    <!-- 3. Lower Cladding (Substrate) Dimensions -->
+    <!-- 3. Lower Cladding (Substrate) -->
     <div class="section-title">Lower Cladding (BOX) (nm)</div>
     <div class="control-group">
       <label>Width: <span id="w-sub-val">1500</span> nm</label>
@@ -78,8 +78,8 @@
 
     <hr class="divider">
 
-    <!-- 4. Upper Cladding Dimensions (Surrounding Core) -->
-    <div class="section-title">Upper Cladding (Enclosing) (nm)</div>
+    <!-- 4. Upper Cladding -->
+    <div class="section-title">Upper Cladding (Cover) (nm)</div>
     <div class="control-group">
       <label>Width: <span id="w-top-val">1500</span> nm</label>
       <input type="range" id="w-top-slider" min="500" max="3000" step="50" value="1500">
@@ -95,12 +95,42 @@
 
     <hr class="divider">
 
-    <!-- 5. Input Laser Settings -->
-    <div class="section-title">Input Laser Source</div>
-    <div class="control-group">
-      <label>Wavelength ($\lambda$): <span id="wavelength-val">1550</span> nm</label>
-      <input type="range" id="wavelength-slider" min="850" max="1650" step="10" value="1550">
+    <!-- 5. Laser Source & Gaussian Pulse Settings -->
+    <button class="btn-toggle" onclick="toggleLaserPanel()">
+      Laser Source Settings ▼
+    </button>
+    
+    <div id="laser-panel" class="collapsible-content">
+      <div class="control-group">
+        <label>Wavelength ($\lambda$): <span id="wavelength-val">1550</span> nm</label>
+        <input type="range" id="wavelength-slider" min="850" max="1650" step="10" value="1550">
+      </div>
+
+      <div class="sub-title">Incident Angles (deg)</div>
+      <div class="control-group">
+        <label>Angle X: <span id="rot-x-val">0</span>°</label>
+        <input type="range" id="rot-x-slider" min="-45" max="45" step="1" value="0">
+      </div>
+      <div class="control-group">
+        <label>Angle Y: <span id="rot-y-val">0</span>°</label>
+        <input type="range" id="rot-y-slider" min="-45" max="45" step="1" value="0">
+      </div>
+      <div class="control-group">
+        <label>Angle Z (Polarization): <span id="rot-z-val">0</span>°</label>
+        <input type="range" id="rot-z-slider" min="-90" max="90" step="1" value="0">
+      </div>
+
+      <div class="sub-title">Gaussian Pulse Parameters</div>
+      <div class="control-group">
+        <label>Pulse Width ($w_0$): <span id="pulse-width-val">300</span> nm</label>
+        <input type="range" id="pulse-width-slider" min="100" max="1000" step="10" value="300">
+      </div>
+      <div class="control-group">
+        <label>Intensity ($I_0$): <span id="intensity-val">1.0</span> a.u.</label>
+        <input type="range" id="intensity-slider" min="0.1" max="3.0" step="0.1" value="1.0">
+      </div>
     </div>
+
   </div>
 
   <script src="main.js"></script>
