@@ -42,7 +42,7 @@ const axisRenderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
 axisRenderer.setSize(120, 120);
 axisContainer.appendChild(axisRenderer.domElement);
 
-// 텍스트 라벨(X, Y, Z) 생성용 헬퍼 함수 (Canvas -> Texture -> Sprite)
+// 텍스트 라벨(X, Y, Z) 생성용 헬퍼 함수
 function createTextSprite(text, colorHex) {
   const canvas = document.createElement('canvas');
   canvas.width = 64;
@@ -78,7 +78,6 @@ function createAxesGizmo() {
   group.add(arrowY);
   group.add(arrowZ);
 
-  // X, Y, Z 글자 라벨 추가
   const labelX = createTextSprite('X', '#ef4444');
   labelX.position.set(1.0, 0, 0);
 
@@ -109,9 +108,8 @@ let params = {
   top: { w: 1500, h: 600, l: 3000 },
   laser: {
     wavelength: 1550,   // nm
-    rotX: 0,
-    rotY: 0,
-    rotZ: 0,
+    rotX: 0,            // deg (Pitch)
+    rotY: 0,            // deg (Yaw)
     pulseWidth: 30,     // nm (Spectral Width)
     intensity: 1.0
   }
@@ -181,7 +179,7 @@ function buildStructure() {
   topMesh.position.set(0, topH / 2, 0);
   scene.add(topMesh);
 
-  // 5. 일자형 실린더 레이저 빔 생성
+  // 5. 일자형 실린더 레이저 빔 생성 (수정된 각도 적용)
   buildStraightLaserBeam(coreW, coreH, coreL);
   
   // 그래프 업데이트
@@ -190,12 +188,11 @@ function buildStructure() {
 
 // 일자형 스트림 레이저 빔 구성
 function buildStraightLaserBeam(coreW, coreH, coreL) {
-  const beamLength = 1.5; // 입사 빔 길이
+  const beamLength = 1.5; 
   const beamRadius = 0.04;
 
   const beamGeo = new THREE.CylinderGeometry(beamRadius, beamRadius, beamLength, 32);
   
-  // 일자형 레이저 전용 발광 메티리얼
   laserBeamMat = new THREE.MeshStandardMaterial({
     color: 0xef4444,
     emissive: 0xef4444,
@@ -206,20 +203,24 @@ function buildStraightLaserBeam(coreW, coreH, coreL) {
 
   laserBeamMesh = new THREE.Mesh(beamGeo, laserBeamMat);
 
-  // 회전 중심 및 위치 조정 (실린더 축을 Z축 방향으로 정렬)
+  // 기본 세로 실린더를 Z축(-Z 진행방향)으로 누이도록 지오메트리 자체 회전
   beamGeo.rotateX(Math.PI / 2);
+
+  // 도파로 입력 단면 중심에 빔의 끝단이 맞물리도록 위치 설정
   laserBeamMesh.position.set(0, coreH / 2, -coreL / 2 - beamLength / 2);
 
-  // x, y, z 회전 각도 바인딩
+  // X축 각도(Pitch: 수직 기울임)와 Y축 각도(Yaw: 수평 기울임) 매핑 교정
   const radX = (params.laser.rotX * Math.PI) / 180;
   const radY = (params.laser.rotY * Math.PI) / 180;
-  const radZ = (params.laser.rotZ * Math.PI) / 180;
-  laserBeamMesh.rotation.set(radX, radY, radZ);
+
+  // YXZ 순서로 Euler 회전을 적용하여 축 간섭 방지
+  laserBeamMesh.rotation.order = 'YXZ';
+  laserBeamMesh.rotation.set(-radX, radY, 0);
 
   scene.add(laserBeamMesh);
 }
 
-// 6. 파장 대비 세기 ($I$ vs $\lambda$) 스펙트럼 Canvas 그래프 그리기
+// 6. 스펙트럼 Canvas 그래프 그리기
 function drawSpectrumGraph() {
   const canvas = document.getElementById('spectrum-canvas');
   if (!canvas) return;
@@ -230,12 +231,11 @@ function drawSpectrumGraph() {
 
   ctx.clearRect(0, 0, w, h);
 
-  // 가우시안 변수
   const lambda0 = params.laser.wavelength;
   const deltaLambda = params.laser.pulseWidth;
   const I0 = params.laser.intensity;
 
-  // 축 그리기
+  // 축
   ctx.strokeStyle = '#475569';
   ctx.lineWidth = 1;
   ctx.beginPath();
@@ -250,7 +250,7 @@ function drawSpectrumGraph() {
   ctx.fillText('I', 10, 15);
   ctx.fillText('λ (nm)', w - 35, h - 5);
 
-  // 가우시안 곡선 계산 및 그리기
+  // 가우시안 곡선
   ctx.strokeStyle = '#ef4444';
   ctx.fillStyle = 'rgba(239, 68, 68, 0.2)';
   ctx.lineWidth = 2;
@@ -261,14 +261,10 @@ function drawSpectrumGraph() {
 
   let started = false;
   for (let px = 30; px <= w - 10; px++) {
-    // 픽셀을 파장(nm)으로 매핑
     const lam = minLambda + ((px - 30) / (w - 40)) * (maxLambda - minLambda);
-    
-    // Gaussian: I = I0 * exp( - (lam - lambda0)^2 / (2 * sigma^2) )
-    const sigma = deltaLambda / 2.355; // FWHM 변환
+    const sigma = deltaLambda / 2.355;
     const intensity = I0 * Math.exp(-Math.pow(lam - lambda0, 2) / (2 * Math.pow(sigma, 2)));
 
-    // y 픽셀 변환
     const py = (h - 20) - (intensity / 3.0) * (h - 30);
 
     if (!started) {
@@ -280,7 +276,6 @@ function drawSpectrumGraph() {
   }
   ctx.stroke();
 
-  // 하단 영역 색칠
   ctx.lineTo(w - 10, h - 20);
   ctx.lineTo(30, h - 20);
   ctx.closePath();
@@ -316,7 +311,6 @@ bindSlider('l-top-slider', params.top, 'l', 'l-top-val');
 bindSlider('wavelength-slider', params.laser, 'wavelength', 'wavelength-val');
 bindSlider('rot-x-slider', params.laser, 'rotX', 'rot-x-val');
 bindSlider('rot-y-slider', params.laser, 'rotY', 'rot-y-val');
-bindSlider('rot-z-slider', params.laser, 'rotZ', 'rot-z-val');
 bindSlider('pulse-width-slider', params.laser, 'pulseWidth', 'pulse-width-val');
 bindSlider('intensity-slider', params.laser, 'intensity', 'intensity-val');
 
@@ -347,7 +341,7 @@ window.toggleLaserPanel = function() {
   panel.style.display = (panel.style.display === 'none' || panel.style.display === '') ? 'block' : 'none';
 };
 
-// 8. 애니메이션 루프 (일자 빔의 주기적 밝기 변화 & 좌표축 연동)
+// 8. 애니메이션 루프
 let clock = new THREE.Clock();
 
 function animate() {
@@ -355,15 +349,13 @@ function animate() {
 
   const t = clock.getElapsedTime();
 
-  // 일자형 레이저 빔이 주기에 따라 밝아졌다 어두워짐 (Sine 파동)
   if (laserBeamMat) {
-    const freq = 10; // 파동 주파수
+    const freq = 10;
     const pulseFactor = 0.5 + 0.5 * Math.sin(t * freq);
     laserBeamMat.emissiveIntensity = params.laser.intensity * pulseFactor;
     laserBeamMat.opacity = 0.4 + 0.5 * pulseFactor;
   }
 
-  // 메인 카메라의 회전 상태를 우측 상단 축 Gizmo 카메라에 연동
   axisGizmo.quaternion.copy(camera.quaternion).invert();
 
   controls.update();
