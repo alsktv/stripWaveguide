@@ -210,7 +210,7 @@ function drawSpectrumGraph() {
 
 build3DScene();
 
-// 5. 슬라이더 바인딩
+// 5. 슬라이더 이벤트 바인딩
 function bindSlider(id, targetObj, key, displayId) {
   const slider = document.getElementById(id);
   const display = document.getElementById(displayId);
@@ -266,7 +266,7 @@ window.toggleLaserPanel = function() {
   }
 };
 
-// 6. 출력 단면 전반사 여부 검증 및 2D 전기장 히트맵 연산 함수
+// 6. [핵심 수정] 엄밀한 연속 경계 조건 기반 2D 전기장 계산
 function drawCrossSectionField(t) {
   const cvs = document.getElementById('cross-section-canvas');
   if (!cvs) return;
@@ -281,20 +281,19 @@ function drawCrossSectionField(t) {
   const incX = (params.laser.rotX * Math.PI) / 180;
   const incY = (params.laser.rotY * Math.PI) / 180;
 
-  // 1. 수용각(Acceptance Angle) 및 전반사 조건 검증
+  // 1. 수용각(Acceptance Angle) 및 TIR 검증
   const NA = Math.sqrt(Math.max(0, n2 * n2 - n1 * n1));
   const maxAcceptanceAngleRad = Math.asin(Math.min(1.0, NA / n1));
   const totalIncAngleRad = Math.sqrt(incX * incX + incY * incY);
 
   const isGuided = totalIncAngleRad <= maxAcceptanceAngleRad && NA > 0;
 
-  const coreW = params.core1.w; // nm 단위
-  const coreH = params.core1.h; // nm 단위
+  const coreW = params.core1.w; // nm
+  const coreH = params.core1.h; // nm
 
   const imgData = ctx.createImageData(W, H);
   const data = imgData.data;
 
-  // 2. Cutoff 발생 시
   if (!isGuided) {
     for (let i = 0; i < data.length; i += 4) {
       data[i] = 15;      // R
@@ -303,11 +302,11 @@ function drawCrossSectionField(t) {
       data[i + 3] = 255; // A
     }
     ctx.putImageData(imgData, 0, 0);
-    drawBoundaryAndLabels(ctx, W, H, coreW, coreH, false);
+    drawBoundaryAndLabels(ctx, W, H, coreW, coreH, coreW * 2.4, coreH * 2.4, false);
     return;
   }
 
-  // 3. Guided 상태 - 정밀한 에바네센트 침투 깊이(dp) 계산
+  // 2. 굴절 및 파수/감쇠 상수 유도
   const refrX = Math.asin(Math.min(1.0, (n1 / n2) * Math.sin(incX)));
   const refrY = Math.asin(Math.min(1.0, (n1 / n2) * Math.sin(incY)));
 
@@ -319,62 +318,68 @@ function drawCrossSectionField(t) {
     deltaPhaseX = 2 * Math.atan(num / den);
   }
 
-  // 침투 깊이 dp (nm 단위로 환산)
   const wavelengthNm = params.laser.wavelength;
   const dp = (wavelengthNm / (2 * Math.PI)) / Math.sqrt(Math.max(0.001, n2 * n2 * Math.sin(thetaX) ** 2 - n1 * n1));
-  
-  // 에바네센트 감쇠 속도 조절 (화면 크기에 맞춘 감쇠 계수)
-  const alphaX = 1 / (dp * 0.8);
-  const alphaY = 1 / (dp * 0.8);
+  const alpha = 1 / (dp * 0.95);
+
+  // [핵심] 경계 연속성을 위한 코어 모드 파수(kx, ky) 설정
+  // 코어 경계(|x|=w/2)에서 cos(kx * w/2) = Eb_x (>0) 가 되도록 횡파수 조정
+  const kx = (Math.PI * 0.72) / coreW;
+  const ky = (Math.PI * 0.72) / coreH;
+
+  const Eb_x = Math.cos(kx * (coreW / 2)); // 경계면에서의 X축 연속 전계값
+  const Eb_y = Math.cos(ky * (coreH / 2)); // 경계면에서의 Y축 연속 전계값
 
   const beta = ((2 * Math.PI) / (wavelengthNm * 1e-9)) * n2 * Math.cos(refrY);
 
-  // 화면 관찰 뷰포트 영역 (코어 크기의 2.5배까지 보여줌)
-  const viewW = coreW * 2.5;
-  const viewH = coreH * 2.5;
+  const viewW = coreW * 2.4;
+  const viewH = coreH * 2.4;
 
   for (let py = 0; py < H; py++) {
     for (let px = 0; px < W; px++) {
-      // nm 단위의 물리적 상대 좌표 (0,0 이 중심)
       const x = ((px - W / 2) / W) * viewW;
       const y = (((H / 2) - py) / H) * viewH;
 
       const absX = Math.abs(x);
       const absY = Math.abs(y);
 
-      let fieldX = 0;
-      let fieldY = 0;
+      let spatialAmplitude = 0;
 
-      // X축 전계 (코어 내부 = cos / 클래딩 = exp 에바네센트)
-      if (absX <= coreW / 2) {
-        fieldX = Math.cos((Math.PI / coreW) * x - deltaPhaseX * 0.1);
-      } else {
-        const boundaryVal = Math.cos(Math.PI / 2 - deltaPhaseX * 0.1);
-        fieldX = boundaryVal * Math.exp(-alphaX * (absX - coreW / 2));
+      // [영역 1] 코어 내부 (|x| <= w/2 AND |y| <= h/2)
+      if (absX <= coreW / 2 && absY <= coreH / 2) {
+        spatialAmplitude = Math.cos(kx * x - deltaPhaseX * 0.05) * Math.cos(ky * y);
       }
+      // [영역 2] X축 방향 클래딩 (|x| > w/2 AND |y| <= h/2)
+      else if (absX > coreW / 2 && absY <= coreH / 2) {
+        const decayX = Eb_x * Math.exp(-alpha * (absX - coreW / 2));
+        spatialAmplitude = decayX * Math.cos(ky * y);
+      }
+      // [영역 3] Y축 방향 클래딩 (|x| <= w/2 AND |y| > h/2)
+      else if (absX <= coreW / 2 && absY > coreH / 2) {
+        const decayY = Eb_y * Math.exp(-alpha * (absY - coreH / 2));
+        spatialAmplitude = Math.cos(kx * x - deltaPhaseX * 0.05) * decayY;
+      }
+      // [영역 4] 4개 모서리 클래딩 영역 (|x| > w/2 AND |y| > h/2)
+      else {
+        // 모서리부터의 2D 유클리드 거리를 이용해 360도 연속 지수 감쇠
+        const cornerDx = absX - coreW / 2;
+        const cornerDy = absY - coreH / 2;
+        const cornerDist = Math.sqrt(cornerDx * cornerDx + cornerDy * cornerDy);
 
-      // Y축 전계 (코어 내부 = cos / 클래딩 = exp 에바네센트)
-      if (absY <= coreH / 2) {
-        fieldY = Math.cos((Math.PI / coreH) * y);
-      } else {
-        fieldY = Math.exp(-alphaY * (absY - coreH / 2));
+        spatialAmplitude = (Eb_x * Eb_y) * Math.exp(-alpha * cornerDist);
       }
 
       const omega = 8.0;
       const phaseZ = beta * (params.core1.l * SCALE) - omega * t;
-      const E_val = Math.abs(params.laser.intensity * fieldX * fieldY * Math.sin(phaseZ));
+      const E_val = Math.abs(params.laser.intensity * spatialAmplitude * Math.sin(phaseZ));
 
-      // [핵심] Color Mapping 다듬기: 0일 때 검은 배경, 낮을 때 짙은 파란색, 높을 때 빨간색
       let r = 0, g = 0, b = 0;
-
-      if (E_val < 0.02) {
-        // 배경색 (Dark slate)
+      if (E_val < 0.01) {
         r = 15; g = 23; b = 42;
       } else {
-        // HSL -> RGB 변환 (E_val: 0.02 ~ 1.0 -> Hue: 220° Blue ~ 0° Red)
-        const normE = Math.min(1.0, (E_val - 0.02) / 0.98);
-        const hue = (1.0 - normE) * 220; // 220(파랑) -> 120(초록) -> 60(노랑) -> 0(빨강)
-        const lightness = 30 + normE * 30; // 30% ~ 60%
+        const normE = Math.min(1.0, E_val);
+        const hue = (1.0 - normE) * 220; 
+        const lightness = 30 + normE * 32;
         [r, g, b] = hslToRgb(hue / 360, 0.95, lightness / 100);
       }
 
@@ -388,32 +393,25 @@ function drawCrossSectionField(t) {
 
   ctx.putImageData(imgData, 0, 0);
 
-  // 4. Core & Cladding 경계선 및 라벨 그리기
   drawBoundaryAndLabels(ctx, W, H, coreW, coreH, viewW, viewH, isGuided);
 }
 
-// Core & Cladding 시각적 레이아웃 표시 함수
 function drawBoundaryAndLabels(ctx, W, H, coreW, coreH, viewW, viewH, isGuided) {
   const corePxW = (coreW / viewW) * W;
   const corePxH = (coreH / viewH) * H;
   const coreX = (W - corePxW) / 2;
   const coreY = (H - corePxH) / 2;
 
-  // 코어 경계선
   ctx.strokeStyle = isGuided ? 'rgba(255, 255, 255, 0.85)' : 'rgba(239, 68, 68, 0.6)';
   ctx.lineWidth = 1.5;
   ctx.setLineDash([4, 4]);
   ctx.strokeRect(coreX, coreY, corePxW, corePxH);
   ctx.setLineDash([]);
 
-  // 라벨 표기
   ctx.font = '10px sans-serif';
-  
-  // Cladding 라벨
   ctx.fillStyle = '#94a3b8';
   ctx.fillText('Cladding (Evanescent Zone)', 8, 14);
 
-  // Core 라벨
   ctx.fillStyle = isGuided ? '#ffffff' : '#f87171';
   ctx.fillText('Core', coreX + 6, coreY + 14);
 
