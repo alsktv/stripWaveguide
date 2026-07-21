@@ -79,7 +79,13 @@ let params = {
   core1: { w: 450, h: 220, l: 3000 },
   sub: { w: 2500, h: 400, l: 3000 },
   top: { w: 2500, h: 600, l: 3000 },
-  laser: { wavelength: 1550, rotX: 0, rotY: 0, intensity: 1.0 }
+  laser: {
+    wavelength: 1550,
+    rotX: 0,
+    rotY: 0,
+    pulseWidth: 30,
+    intensity: 1.0
+  }
 };
 
 // Material
@@ -88,25 +94,26 @@ const subMat = new THREE.MeshStandardMaterial({ color: 0x64748b, transparent: tr
 const topMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, transparent: true, opacity: 0.15 });
 const wireMat = new THREE.LineBasicMaterial({ color: 0xf8fafc });
 
-let core1Mesh, subMesh, topMesh;
+let core1Mesh, subMesh, topMesh, laserBeamMesh, laserBeamMat;
 
 function build3DScene() {
   if (core1Mesh) scene.remove(core1Mesh);
   if (subMesh) scene.remove(subMesh);
   if (topMesh) scene.remove(topMesh);
+  if (laserBeamMesh) scene.remove(laserBeamMesh);
 
   const c1W = params.core1.w * SCALE;
   const c1H = params.core1.h * SCALE;
   const c1L = params.core1.l * SCALE;
 
-  // Core 1
+  // A. Core 1
   const cGeo = new THREE.BoxGeometry(c1W, c1H, c1L);
   core1Mesh = new THREE.Mesh(cGeo, coreMat);
   core1Mesh.position.set(0, c1H / 2, 0);
   core1Mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(cGeo), wireMat));
   scene.add(core1Mesh);
 
-  // Substrate & Top Cladding
+  // B. Substrate & Top Cladding
   const subH = params.sub.h * SCALE;
   subMesh = new THREE.Mesh(new THREE.BoxGeometry(params.sub.w * SCALE, subH, c1L), subMat);
   subMesh.position.set(0, -subH / 2, 0);
@@ -116,10 +123,153 @@ function build3DScene() {
   topMesh = new THREE.Mesh(new THREE.BoxGeometry(params.top.w * SCALE, topH, c1L), topMat);
   topMesh.position.set(0, topH / 2, 0);
   scene.add(topMesh);
+
+  // C. 외부 입사 레이저 빔 복원
+  buildStraightLaserBeam(c1W, c1H, c1L);
+
+  // D. 스펙트럼 그래프 복원
+  drawSpectrumGraph();
 }
+
+function buildStraightLaserBeam(c1W, c1H, c1L) {
+  const beamLength = 1.2;
+  const beamRadius = Math.min(c1W, c1H) * 0.4;
+
+  const beamGeo = new THREE.CylinderGeometry(beamRadius, beamRadius, beamLength, 32);
+  beamGeo.translate(0, -beamLength / 2, 0);
+  beamGeo.rotateX(Math.PI / 2);
+
+  laserBeamMat = new THREE.MeshStandardMaterial({
+    color: 0xef4444,
+    emissive: 0xef4444,
+    emissiveIntensity: params.laser.intensity,
+    transparent: true,
+    opacity: 0.85
+  });
+
+  laserBeamMesh = new THREE.Mesh(beamGeo, laserBeamMat);
+  scene.add(laserBeamMesh);
+}
+
+// 4. 스펙트럼 캔버스 그래프 복원 함수
+function drawSpectrumGraph() {
+  const canvas = document.getElementById('spectrum-canvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+
+  const w = canvas.width;
+  const h = canvas.height;
+
+  ctx.clearRect(0, 0, w, h);
+
+  const lambda0 = params.laser.wavelength;
+  const deltaLambda = params.laser.pulseWidth;
+  const I0 = params.laser.intensity;
+
+  // 축 그리기
+  ctx.strokeStyle = '#475569';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(30, 10);
+  ctx.lineTo(30, h - 20);
+  ctx.lineTo(w - 10, h - 20);
+  ctx.stroke();
+
+  ctx.fillStyle = '#94a3b8';
+  ctx.font = '10px sans-serif';
+  ctx.fillText('I', 10, 15);
+  ctx.fillText('λ (nm)', w - 35, h - 5);
+
+  // 가우시안 커브
+  ctx.strokeStyle = '#ef4444';
+  ctx.fillStyle = 'rgba(239, 68, 68, 0.2)';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+
+  const minLambda = 700;
+  const maxLambda = 1800;
+
+  let started = false;
+  for (let px = 30; px <= w - 10; px++) {
+    const lam = minLambda + ((px - 30) / (w - 40)) * (maxLambda - minLambda);
+    const sigma = deltaLambda / 2.355;
+    const intensity = I0 * Math.exp(-Math.pow(lam - lambda0, 2) / (2 * Math.pow(sigma, 2)));
+
+    const py = (h - 20) - (intensity / 3.0) * (h - 30);
+
+    if (!started) {
+      ctx.moveTo(px, py);
+      started = true;
+    } else {
+      ctx.lineTo(px, py);
+    }
+  }
+  ctx.stroke();
+  ctx.lineTo(w - 10, h - 20);
+  ctx.lineTo(30, h - 20);
+  ctx.closePath();
+  ctx.fill();
+}
+
 build3DScene();
 
-// 4. 출력 단면 전반사 위상변화 & 에바네센트 2D 전기장 계산 함수
+// 5. 슬라이더 이벤트 바인딩
+function bindSlider(id, targetObj, key, displayId) {
+  const slider = document.getElementById(id);
+  const display = document.getElementById(displayId);
+  if (!slider) return;
+  slider.addEventListener('input', (e) => {
+    const val = parseFloat(e.target.value);
+    targetObj[key] = val;
+    if (display) display.textContent = val;
+    build3DScene();
+  });
+}
+
+bindSlider('w-core-slider', params.core1, 'w', 'w-core-val');
+bindSlider('h-core-slider', params.core1, 'h', 'h-core-val');
+bindSlider('l-core-slider', params.core1, 'l', 'l-core-val');
+
+bindSlider('w-sub-slider', params.sub, 'w', 'w-sub-val');
+bindSlider('h-sub-slider', params.sub, 'h', 'h-sub-val');
+bindSlider('l-sub-slider', params.sub, 'l', 'l-sub-val');
+
+bindSlider('w-top-slider', params.top, 'w', 'w-top-val');
+bindSlider('h-top-slider', params.top, 'h', 'h-top-val');
+bindSlider('l-top-slider', params.top, 'l', 'l-top-val');
+
+bindSlider('wavelength-slider', params.laser, 'wavelength', 'wavelength-val');
+bindSlider('rot-x-slider', params.laser, 'rotX', 'rot-x-val');
+bindSlider('rot-y-slider', params.laser, 'rotY', 'rot-y-val');
+bindSlider('pulse-width-slider', params.laser, 'pulseWidth', 'pulse-width-val');
+bindSlider('intensity-slider', params.laser, 'intensity', 'intensity-val');
+
+const nCoreSlider = document.getElementById('n-core-slider');
+if (nCoreSlider) {
+  nCoreSlider.addEventListener('input', (e) => {
+    params.nCore = parseFloat(e.target.value);
+    document.getElementById('n-core-val').textContent = params.nCore;
+    build3DScene();
+  });
+}
+
+const nCladdSlider = document.getElementById('n-cladd-slider');
+if (nCladdSlider) {
+  nCladdSlider.addEventListener('input', (e) => {
+    params.nCladd = parseFloat(e.target.value);
+    document.getElementById('n-cladd-val').textContent = params.nCladd;
+    build3DScene();
+  });
+}
+
+window.toggleLaserPanel = function() {
+  const panel = document.getElementById('laser-panel');
+  if (panel) {
+    panel.style.display = (panel.style.display === 'none' || panel.style.display === '') ? 'block' : 'none';
+  }
+};
+
+// 6. 출력 단면 전반사 위상변화 & 에바네센트 2D 전기장 계산 함수
 function drawCrossSectionField(t) {
   const cvs = document.getElementById('cross-section-canvas');
   if (!cvs) return;
@@ -134,20 +284,20 @@ function drawCrossSectionField(t) {
   const incX = (params.laser.rotX * Math.PI) / 180;
   const incY = (params.laser.rotY * Math.PI) / 180;
 
-  // 1. 스넬의 법칙 및 굴절 각도
+  // 스넬의 법칙
   const refrX = Math.asin(Math.min(1.0, (n1 / n2) * Math.sin(incX)));
   const refrY = Math.asin(Math.min(1.0, (n1 / n2) * Math.sin(incY)));
 
-  // 2. 전반사에 의한 프레넬 위상 지연 (Phase Shift δ)
-  const thetaX = Math.PI / 2 - refrY; // 입사각
+  // 전반사 프레넬 위상 지연 (Phase Shift δ)
+  const thetaX = Math.PI / 2 - refrY;
   let deltaPhaseX = 0;
   if (Math.sin(thetaX) > n1 / n2) {
     const num = Math.sqrt(n2 * n2 * Math.sin(thetaX) ** 2 - n1 * n1);
     const den = n2 * Math.cos(thetaX);
-    deltaPhaseX = 2 * Math.atan(num / den); // TE 모드 전반사 위상차
+    deltaPhaseX = 2 * Math.atan(num / den);
   }
 
-  // 3. 전파 상수 및 에바네센트 감쇠 계수 γ (Gamma)
+  // 전파 상수 및 에바네센트 감쇠 계수 γ (Gamma)
   const k0 = (2 * Math.PI) / (params.laser.wavelength * 1e-9);
   const beta = k0 * n2 * Math.cos(refrY);
   const gammaX = Math.sqrt(Math.max(0, beta * beta - (k0 * n1) ** 2)) * SCALE * 0.8;
@@ -159,10 +309,8 @@ function drawCrossSectionField(t) {
   const imgData = ctx.createImageData(W, H);
   const data = imgData.data;
 
-  // 4. 2D 픽셀 루프 연산
   for (let py = 0; py < H; py++) {
     for (let px = 0; px < W; px++) {
-      // Canvas 좌표 -> Physical nm 좌표 변환 (중심 0,0)
       const x = ((px - W / 2) / (W / 2)) * (coreW * 1.8);
       const y = (((H / 2) - py) / (H / 2)) * (coreH * 1.8);
 
@@ -172,7 +320,6 @@ function drawCrossSectionField(t) {
       let fieldX = 0;
       let fieldY = 0;
 
-      // X축 전계 (전반사 위상 지연 deltaPhaseX 및 에바네센트 감쇠 반영)
       if (absX <= coreW / 2) {
         fieldX = Math.cos((Math.PI / coreW) * x - deltaPhaseX * 0.1);
       } else {
@@ -180,22 +327,19 @@ function drawCrossSectionField(t) {
         fieldX = boundaryVal * Math.exp(-gammaX * (absX - coreW / 2));
       }
 
-      // Y축 전계
       if (absY <= coreH / 2) {
         fieldY = Math.cos((Math.PI / coreH) * y);
       } else {
         fieldY = Math.exp(-gammaY * (absY - coreH / 2));
       }
 
-      // 시간 및 전체 전기장 크기 |E|
       const omega = 8.0;
       const phaseZ = beta * (params.core1.l * SCALE) - omega * t;
       const E_val = Math.abs(params.laser.intensity * fieldX * fieldY * Math.sin(phaseZ));
 
       // HSL Color Mapping (파란색 -> 주황색 -> 빨간색)
-      // E_val: 0.0 -> H:200 (Light Blue), E_val: 1.0 -> H:0 (Red)
-      const hue = (1.0 - Math.min(1.0, E_val)) * 200; 
-      const lightness = 40 + E_val * 20; // 40% ~ 60%
+      const hue = (1.0 - Math.min(1.0, E_val)) * 200;
+      const lightness = 40 + E_val * 20;
 
       const [r, g, b] = hslToRgb(hue / 360, 0.9, lightness / 100);
 
@@ -203,13 +347,13 @@ function drawCrossSectionField(t) {
       data[idx] = r;
       data[idx + 1] = g;
       data[idx + 2] = b;
-      data[idx + 3] = 255; // Alpha
+      data[idx + 3] = 255;
     }
   }
 
   ctx.putImageData(imgData, 0, 0);
 
-  // 도파로 코어 경계 가이드 라인 그려주기
+  // 코어 경계 라인 표시
   ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
   ctx.lineWidth = 1;
   const corePxW = (coreW / (coreW * 3.6)) * W * 2;
@@ -217,7 +361,6 @@ function drawCrossSectionField(t) {
   ctx.strokeRect((W - corePxW) / 2, (H - corePxH) / 2, corePxW, corePxH);
 }
 
-// HSL to RGB 변환 헬퍼 함수
 function hslToRgb(h, s, l) {
   let r, g, b;
   if (s === 0) {
@@ -241,14 +384,34 @@ function hue2rgb(p, q, t) {
   return p;
 }
 
-// 5. 애니메이션 루프
+// 7. 실시간 애니메이션 루프
 const clock = new THREE.Clock();
 function animate() {
   requestAnimationFrame(animate);
 
   const t = clock.getElapsedTime();
+  const omega = 8.0;
 
-  // 출력 단면 2D 전기장 히트맵 갱신
+  const c1H = params.core1.h * SCALE;
+  const c1L = params.core1.l * SCALE;
+
+  const incX = (params.laser.rotX * Math.PI) / 180;
+  const incY = (params.laser.rotY * Math.PI) / 180;
+
+  // 레이저 빔 위치 및 오일러 각도 회전 연동 복원
+  if (laserBeamMesh) {
+    laserBeamMesh.position.set(0, c1H / 2, -c1L / 2);
+    laserBeamMesh.rotation.order = 'XYZ';
+    laserBeamMesh.rotation.set(-incX, incY, 0);
+  }
+
+  if (laserBeamMat) {
+    const pulseFactor = 0.5 + 0.5 * Math.sin(t * omega);
+    laserBeamMat.emissiveIntensity = params.laser.intensity * pulseFactor;
+    laserBeamMat.opacity = 0.4 + 0.5 * pulseFactor;
+  }
+
+  // 2D 단면 전기장 히트맵 갱신
   drawCrossSectionField(t);
 
   controls.update();
