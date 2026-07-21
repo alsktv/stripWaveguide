@@ -113,15 +113,15 @@ let params = {
   }
 };
 
-// Material 설정 (도파로 1 및 일반 코어 공통 파란색)
+// Material 설정
 const coreMat = new THREE.MeshStandardMaterial({
   color: 0x38bdf8,
   roughness: 0.2,
   metalness: 0.8,
   emissive: 0x0284c7,
-  emissiveIntensity: 0.3,
+  emissiveIntensity: 0.2,
   transparent: true,
-  opacity: 0.75
+  opacity: 0.45
 });
 
 const subMat = new THREE.MeshStandardMaterial({
@@ -134,23 +134,24 @@ const subMat = new THREE.MeshStandardMaterial({
 const topMat = new THREE.MeshStandardMaterial({
   color: 0x94a3b8,
   transparent: true,
-  opacity: 0.2,
+  opacity: 0.15,
   roughness: 0.1
 });
 
 const wireframeMat = new THREE.LineBasicMaterial({ color: 0xf8fafc, linewidth: 1 });
 
-// 도파로 내부 빛 진행(Propagation) 시각화 재질
-const guidedLightMat = new THREE.MeshStandardMaterial({
-  color: 0x38bdf8,
-  emissive: 0x38bdf8,
-  emissiveIntensity: 1.2,
+// 도파로 내부 빛 진행 빔 재질 (빨간색, 가변 투명도)
+const guidedRedBeamMat = new THREE.MeshStandardMaterial({
+  color: 0xef4444,
+  emissive: 0xef4444,
+  emissiveIntensity: 1.0,
   transparent: true,
-  opacity: 0.85
+  opacity: 0.7
 });
 
 let core1Mesh, subMesh, topMesh, laserBeamMesh, laserBeamMat;
-let lightPropagationGroup; // 도파로 내부 빛 진행 메쉬 그룹
+let guidedRedBeamMesh; 
+let emVectorGroup;
 
 // 4. 3D 메쉬 생성
 function buildStructure() {
@@ -158,13 +159,14 @@ function buildStructure() {
   if (subMesh) { scene.remove(subMesh); subMesh.geometry.dispose(); }
   if (topMesh) { scene.remove(topMesh); topMesh.geometry.dispose(); }
   if (laserBeamMesh) { scene.remove(laserBeamMesh); laserBeamMesh.geometry.dispose(); }
-  if (lightPropagationGroup) { scene.remove(lightPropagationGroup); }
+  if (guidedRedBeamMesh) { scene.remove(guidedRedBeamMesh); guidedRedBeamMesh.geometry.dispose(); }
+  if (emVectorGroup) { scene.remove(emVectorGroup); }
 
   const c1W = params.core1.w * SCALE;
   const c1H = params.core1.h * SCALE;
   const c1L = params.core1.l * SCALE;
 
-  // A. Core 1 (도파로 1)
+  // A. Core 1
   const core1Geo = new THREE.BoxGeometry(c1W, c1H, c1L);
   core1Mesh = new THREE.Mesh(core1Geo, coreMat);
   core1Mesh.position.set(0, c1H / 2, 0);
@@ -192,13 +194,16 @@ function buildStructure() {
   // D. 입사 레이저 빔
   buildStraightLaserBeam(c1W, c1H, c1L, 0);
 
-  // E. 도파로 내부 빛 전파(Propagation) 파동 메쉬 구축
-  buildLightPropagation(c1W, c1H, c1L);
+  // E. 도파로 내부 빛 진행 빔
+  buildGuidedRedBeam(c1W, c1H, c1L);
+
+  // F. TE 모드 전자기장 벡터 화살표 시스템
+  buildTEFieldVectors(c1W, c1H, c1L);
 
   drawSpectrumGraph();
 }
 
-// 레이저 빔 생성
+// 입사 레이저 빔
 function buildStraightLaserBeam(c1W, c1H, c1L, posX1) {
   const beamLength = 1.5; 
   const beamRadius = 0.04;
@@ -227,26 +232,44 @@ function buildStraightLaserBeam(c1W, c1H, c1L, posX1) {
   scene.add(laserBeamMesh);
 }
 
-// 코어 내부 전파 파동 시각화 메쉬 구축
-function buildLightPropagation(c1W, c1H, c1L) {
-  lightPropagationGroup = new THREE.Group();
+// 도파로 내부 진행 빔
+function buildGuidedRedBeam(c1W, c1H, c1L) {
+  const beamRadius = Math.min(c1W, c1H) * 0.3;
+  const beamGeo = new THREE.CylinderGeometry(beamRadius, beamRadius, c1L, 32);
+  beamGeo.rotateX(Math.PI / 2);
 
-  const numPackets = 12; // 빛 파동 패킷 개수
-  const packetRadius = Math.min(c1W, c1H) * 0.35;
+  guidedRedBeamMesh = new THREE.Mesh(beamGeo, guidedRedBeamMat);
+  guidedRedBeamMesh.position.set(0, c1H / 2, 0);
+  scene.add(guidedRedBeamMesh);
+}
 
-  for (let i = 0; i < numPackets; i++) {
-    const geo = new THREE.CylinderGeometry(packetRadius, packetRadius, 0.08, 16);
-    geo.rotateX(Math.PI / 2); // Z축 방향 배치
-    const mesh = new THREE.Mesh(geo, guidedLightMat);
-    
-    // Z축 진행 방향으로 일정 이격 배치
-    const initialZ = -c1L / 2 + (c1L / numPackets) * i;
-    mesh.position.set(0, c1H / 2, initialZ);
-    
-    lightPropagationGroup.add(mesh);
+// TE 모드 특성 반영 전자기장(E & H) 화살표 벡터 구축
+function buildTEFieldVectors(c1W, c1H, c1L) {
+  emVectorGroup = new THREE.Group();
+
+  const numSamplePoints = 14;
+  const stepZ = c1L / (numSamplePoints - 1);
+
+  for (let i = 0; i < numSamplePoints; i++) {
+    const zPos = -c1L / 2 + i * stepZ;
+    const origin = new THREE.Vector3(0, c1H / 2, zPos);
+
+    // [TE 모드] E 필드: 진행 방향에 직교하는 수평 방향 (X축 - 빨간색 화살표)
+    const dirE = new THREE.Vector3(1, 0, 0);
+    const arrowE = new THREE.ArrowHelper(dirE, origin, 0.2, 0xf87171, 0.08, 0.05);
+
+    // [TE 모드] H 필드: 수직 방향 (Y축 - 초록색 화살표)
+    const dirH = new THREE.Vector3(0, 1, 0);
+    const arrowH = new THREE.ArrowHelper(dirH, origin, 0.2, 0x4ade80, 0.08, 0.05);
+
+    arrowE.userData = { index: i, zPos: zPos, type: 'E' };
+    arrowH.userData = { index: i, zPos: zPos, type: 'H' };
+
+    emVectorGroup.add(arrowE);
+    emVectorGroup.add(arrowH);
   }
 
-  scene.add(lightPropagationGroup);
+  scene.add(emVectorGroup);
 }
 
 // 5. 스펙트럼 Canvas 그래프
@@ -370,41 +393,49 @@ window.toggleLaserPanel = function() {
   panel.style.display = (panel.style.display === 'none' || panel.style.display === '') ? 'block' : 'none';
 };
 
-// 7. 애니메이션 루프 (빛 진행 연출)
+// 7. 애니메이션 루프 (TE 모드 전자기장 진동 연출)
 let clock = new THREE.Clock();
 
 function animate() {
   requestAnimationFrame(animate);
 
   const t = clock.getElapsedTime();
+  const omega = 8.0;
+  const beta = 10.0;
 
-  // 입사 레이저 펄스
   if (laserBeamMat) {
-    const freq = 10;
-    const pulseFactor = 0.5 + 0.5 * Math.sin(t * freq);
+    const pulseFactor = 0.5 + 0.5 * Math.sin(t * omega);
     laserBeamMat.emissiveIntensity = params.laser.intensity * pulseFactor;
     laserBeamMat.opacity = 0.4 + 0.5 * pulseFactor;
   }
 
-  // 도파로 내부 빛 진행 (Phase Velocity 전파 시각화)
-  if (lightPropagationGroup) {
-    const c1L = params.core1.l * SCALE;
-    const speed = 1.2; // 전파 속도
+  if (guidedRedBeamMat) {
+    const intensityFactor = 0.3 + 0.6 * (0.5 + 0.5 * Math.sin(t * omega));
+    guidedRedBeamMat.opacity = intensityFactor * params.laser.intensity;
+    guidedRedBeamMat.emissiveIntensity = 0.5 + 1.2 * intensityFactor;
+  }
 
-    lightPropagationGroup.children.forEach((packet, idx) => {
-      // z 위치를 시간 t에 따라 이동
-      let currentZ = packet.position.z + speed * 0.01;
-      
-      // 도파로 끝단 도달 시 다시 입력단으로 순환 (Continuous Wave)
-      if (currentZ > c1L / 2) {
-        currentZ = -c1L / 2;
+  // TE 모드 전자기장 벡터 애니메이션
+  if (emVectorGroup) {
+    emVectorGroup.children.forEach((arrow) => {
+      const zPos = arrow.userData.zPos;
+      const phase = beta * zPos - omega * t;
+      const fieldVal = Math.sin(phase);
+
+      const maxLen = 0.35;
+      const currentLen = Math.abs(fieldVal) * maxLen + 0.02;
+
+      if (arrow.userData.type === 'E') {
+        // [TE 모드] E-필드는 진행축(Z)에 직교하는 수평 X축 성분($E_x$)으로만 진동
+        const dirX = fieldVal >= 0 ? 1 : -1;
+        arrow.setDirection(new THREE.Vector3(dirX, 0, 0));
+        arrow.setLength(currentLen, currentLen * 0.3, currentLen * 0.2);
+      } else if (arrow.userData.type === 'H') {
+        // [TE 모드] H-필드는 수직 Y축 성분($H_y$) 및 진행축 성분과 직교
+        const dirY = fieldVal >= 0 ? 1 : -1;
+        arrow.setDirection(new THREE.Vector3(0, dirY, 0));
+        arrow.setLength(currentLen, currentLen * 0.3, currentLen * 0.2);
       }
-      packet.position.z = currentZ;
-
-      // 위치에 따른 파동 맥동 효과
-      const phase = (currentZ / c1L) * Math.PI * 8 - t * 10;
-      const waveVal = 0.5 + 0.5 * Math.sin(phase);
-      packet.scale.set(1 + 0.2 * waveVal, 1 + 0.2 * waveVal, 1);
     });
   }
 
