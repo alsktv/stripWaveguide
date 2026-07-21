@@ -270,8 +270,8 @@ function buildTEFieldVectors(c1W, c1H, c1L) {
     const zPos = -c1L / 2 + i * stepZ;
     const origin = new THREE.Vector3(0, c1H / 2, zPos);
 
-    const arrowE = new THREE.ArrowHelper(new THREE.Vector3(1,0,0), origin, 0.2, 0xf87171, 0.08, 0.05);
-    const arrowH = new THREE.ArrowHelper(new THREE.Vector3(0,1,0), origin, 0.2, 0x4ade80, 0.08, 0.05);
+    const arrowE = new THREE.ArrowHelper(new THREE.Vector3(1, 0, 0), origin, 0.2, 0xf87171, 0.08, 0.05);
+    const arrowH = new THREE.ArrowHelper(new THREE.Vector3(0, 1, 0), origin, 0.2, 0x4ade80, 0.08, 0.05);
 
     arrowE.userData = { index: i, zPos: zPos, type: 'E' };
     arrowH.userData = { index: i, zPos: zPos, type: 'H' };
@@ -422,7 +422,7 @@ window.toggleLaserPanel = function() {
   panel.style.display = (panel.style.display === 'none' || panel.style.display === '') ? 'block' : 'none';
 };
 
-// 8. 애니메이션 및 전반사/각도 부호 정정 계산 루프
+// 8. 실시간 애니메이션 루프 (전자기장 화살표 3D 공간 회전 각도 실시간 반영)
 let clock = new THREE.Clock();
 
 function animate() {
@@ -443,7 +443,6 @@ function animate() {
   const inputX = 0;
   const inputY = c1H / 2;
 
-  // 레이저 메쉬 회전 정렬 (-incX 사용)
   if (laserBeamMesh) {
     laserBeamMesh.position.set(inputX, inputY, inputZ);
     laserBeamMesh.rotation.order = 'XYZ';
@@ -453,7 +452,6 @@ function animate() {
   const n1 = params.nCladd;
   const n2 = params.nCore;
 
-  // NA 및 수용각
   const NA = Math.sqrt(Math.max(0, n2 * n2 - n1 * n1));
   const maxAcceptanceAngleRad = Math.asin(Math.min(1.0, NA / n1));
   const maxAcceptanceAngleDeg = (maxAcceptanceAngleRad * 180) / Math.PI;
@@ -495,17 +493,18 @@ function animate() {
     if (emVectorGroup) emVectorGroup.visible = true;
     if (waveLineMesh) waveLineMesh.visible = true;
 
-    // 스넬의 법칙 굴절각 계산
+    // 1. 3D 스넬의 법칙 굴절각 계산
     const refrX = Math.asin((n1 / n2) * Math.sin(incX));
     const refrY = Math.asin((n1 / n2) * Math.sin(incY));
 
-    // [부호 수정 핵심] 레이저 회전각(-incX)과 연동되도록 내부 전파 기하각을 +refrX로 바르게 반영
-    const kDir = new THREE.Vector3(0, 0, 1);
-    kDir.applyEuler(new THREE.Euler(refrX, refrY, 0, 'XYZ')).normalize();
+    // 2. 굴절 회전 오일러 각 생성
+    const eulerRotation = new THREE.Euler(refrX, refrY, 0, 'XYZ');
 
-    const baseE = new THREE.Vector3(1, 0, 0);
-    baseE.applyEuler(new THREE.Euler(refrX, refrY, 0, 'XYZ')).normalize();
+    // K-벡터 (진행 방향)
+    const kDir = new THREE.Vector3(0, 0, 1).applyEuler(eulerRotation).normalize();
 
+    // TE 모드 기본 전기장(Ex) 및 자기장(Hy) 베이스 3D 회전 적용
+    const baseE = new THREE.Vector3(1, 0, 0).applyEuler(eulerRotation).normalize();
     const baseH = new THREE.Vector3().crossVectors(kDir, baseE).normalize();
 
     const couplingEff = Math.cos((totalIncAngleRad / maxAcceptanceAngleRad) * (Math.PI / 2));
@@ -520,12 +519,12 @@ function animate() {
       guidedRedBeamMat.emissiveIntensity = (0.5 + 1.2 * intensityFactor) * couplingEff;
     }
 
+    // 3. 전자기장 화살표 벡터 3D 각도 기울기 실시간 반영
     if (emVectorGroup) {
       emVectorGroup.children.forEach((arrow) => {
         const zPos = arrow.userData.zPos;
         const zOffset = zPos - inputZ;
         
-        // [부호 수정] rotX가 음수(위쪽 입사)일 때 shiftY도 양수(+Y, 위쪽)로 바르게 진행
         const shiftX = zOffset * Math.tan(refrY);
         const shiftY = zOffset * Math.tan(refrX);
 
@@ -538,10 +537,12 @@ function animate() {
         const currentLen = Math.abs(fieldVal) * maxLen + 0.02;
 
         if (arrow.userData.type === 'E') {
+          // [핵심] 굴절된 3D baseE 방향을 기반으로 화살표 방향 및 회전 연동
           const dir = fieldVal >= 0 ? baseE.clone() : baseE.clone().negate();
           arrow.setDirection(dir);
           arrow.setLength(currentLen, currentLen * 0.3, currentLen * 0.2);
         } else if (arrow.userData.type === 'H') {
+          // [핵심] 굴절된 3D baseH 방향을 기반으로 화살표 방향 및 회전 연동
           const dir = fieldVal >= 0 ? baseH.clone() : baseH.clone().negate();
           arrow.setDirection(dir);
           arrow.setLength(currentLen, currentLen * 0.3, currentLen * 0.2);
@@ -562,7 +563,6 @@ function animate() {
         
         const waveOffset = baseE.clone().multiplyScalar(Math.sin(phase) * amplitude);
         
-        // [부호 수정] Y축 오프셋을 +zOffset * Math.tan(refrX)로 보정하여 입사각과 완벽히 방향 일치
         const centerPos = new THREE.Vector3(
           inputX + zOffset * Math.tan(refrY),
           inputY + zOffset * Math.tan(refrX),
