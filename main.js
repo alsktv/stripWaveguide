@@ -140,7 +140,6 @@ const topMat = new THREE.MeshStandardMaterial({
 
 const wireframeMat = new THREE.LineBasicMaterial({ color: 0xf8fafc, linewidth: 1 });
 
-// 도파로 내부 빛 진행 빔 재질 (빨간색, 가변 투명도)
 const guidedRedBeamMat = new THREE.MeshStandardMaterial({
   color: 0xef4444,
   emissive: 0xef4444,
@@ -194,16 +193,16 @@ function buildStructure() {
   // D. 입사 레이저 빔
   buildStraightLaserBeam(c1W, c1H, c1L, 0);
 
-  // E. 도파로 내부 빛 진행 빔
+  // E. 내부 전파 빔 및 3D 스넬의 법칙 굴절각 계산 적용
   buildGuidedRedBeam(c1W, c1H, c1L);
 
-  // F. TE 모드 전자기장 벡터 화살표 시스템
+  // F. TE 모드 전자기장 화살표 시스템 (입사 각도 회전 연동)
   buildTEFieldVectors(c1W, c1H, c1L);
 
   drawSpectrumGraph();
 }
 
-// 입사 레이저 빔
+// 입사 레이저 빔 (외부)
 function buildStraightLaserBeam(c1W, c1H, c1L, posX1) {
   const beamLength = 1.5; 
   const beamRadius = 0.04;
@@ -232,7 +231,7 @@ function buildStraightLaserBeam(c1W, c1H, c1L, posX1) {
   scene.add(laserBeamMesh);
 }
 
-// 도파로 내부 진행 빔
+// 도파로 내부 진행 빔 (굴절각 반영)
 function buildGuidedRedBeam(c1W, c1H, c1L) {
   const beamRadius = Math.min(c1W, c1H) * 0.3;
   const beamGeo = new THREE.CylinderGeometry(beamRadius, beamRadius, c1L, 32);
@@ -240,30 +239,75 @@ function buildGuidedRedBeam(c1W, c1H, c1L) {
 
   guidedRedBeamMesh = new THREE.Mesh(beamGeo, guidedRedBeamMat);
   guidedRedBeamMesh.position.set(0, c1H / 2, 0);
+
+  // 스넬의 법칙: n1 * sin(theta1) = n2 * sin(theta2)
+  const n1 = params.nCladd;
+  const n2 = params.nCore;
+
+  const incX = (params.laser.rotX * Math.PI) / 180;
+  const incY = (params.laser.rotY * Math.PI) / 180;
+
+  // 굴절각 계산
+  const refrX = Math.asin((n1 / n2) * Math.sin(incX));
+  const refrY = Math.asin((n1 / n2) * Math.sin(incY));
+
+  guidedRedBeamMesh.rotation.order = 'XYZ';
+  guidedRedBeamMesh.rotation.set(-refrX, refrY, 0);
+
   scene.add(guidedRedBeamMesh);
 }
 
-// TE 모드 특성 반영 전자기장(E & H) 화살표 벡터 구축
+// TE 모드 전자기장 화살표 벡터 구축 (각도 연동)
 function buildTEFieldVectors(c1W, c1H, c1L) {
   emVectorGroup = new THREE.Group();
 
   const numSamplePoints = 14;
   const stepZ = c1L / (numSamplePoints - 1);
 
+  // 굴절된 내부 진행 방향 벡터 계산
+  const n1 = params.nCladd;
+  const n2 = params.nCore;
+
+  const incX = (params.laser.rotX * Math.PI) / 180;
+  const incY = (params.laser.rotY * Math.PI) / 180;
+
+  const refrX = Math.asin((n1 / n2) * Math.sin(incX));
+  const refrY = Math.asin((n1 / n2) * Math.sin(incY));
+
+  // 진행 방향 K-벡터 (굴절 반영)
+  const kDir = new THREE.Vector3(0, 0, 1);
+  kDir.applyEuler(new THREE.Euler(-refrX, refrY, 0, 'XYZ')).normalize();
+
+  // TE 모드 기본 전기장(Ex) 및 자기장(Hy) 베이스 벡터
+  const baseE = new THREE.Vector3(1, 0, 0);
+  const baseH = new THREE.Vector3(0, 1, 0);
+
+  // 굴절각에 따른 전자기장 회전 적용
+  baseE.applyEuler(new THREE.Euler(-refrX, refrY, 0, 'XYZ')).normalize();
+  baseH.applyEuler(new THREE.Euler(-refrX, refrY, 0, 'XYZ')).normalize();
+
   for (let i = 0; i < numSamplePoints; i++) {
     const zPos = -c1L / 2 + i * stepZ;
     const origin = new THREE.Vector3(0, c1H / 2, zPos);
 
-    // [TE 모드] E 필드: 진행 방향에 직교하는 수평 방향 (X축 - 빨간색 화살표)
-    const dirE = new THREE.Vector3(1, 0, 0);
-    const arrowE = new THREE.ArrowHelper(dirE, origin, 0.2, 0xf87171, 0.08, 0.05);
+    const arrowE = new THREE.ArrowHelper(baseE, origin, 0.2, 0xf87171, 0.08, 0.05);
+    const arrowH = new THREE.ArrowHelper(baseH, origin, 0.2, 0x4ade80, 0.08, 0.05);
 
-    // [TE 모드] H 필드: 수직 방향 (Y축 - 초록색 화살표)
-    const dirH = new THREE.Vector3(0, 1, 0);
-    const arrowH = new THREE.ArrowHelper(dirH, origin, 0.2, 0x4ade80, 0.08, 0.05);
-
-    arrowE.userData = { index: i, zPos: zPos, type: 'E' };
-    arrowH.userData = { index: i, zPos: zPos, type: 'H' };
+    arrowE.userData = { 
+      index: i, 
+      zPos: zPos, 
+      type: 'E', 
+      dir: baseE.clone(),
+      kDir: kDir.clone()
+    };
+    
+    arrowH.userData = { 
+      index: i, 
+      zPos: zPos, 
+      type: 'H', 
+      dir: baseH.clone(),
+      kDir: kDir.clone()
+    };
 
     emVectorGroup.add(arrowE);
     emVectorGroup.add(arrowH);
@@ -345,12 +389,10 @@ function bindSlider(id, targetObj, key, displayId) {
   });
 }
 
-// Core 1
 bindSlider('w-core-slider', params.core1, 'w', 'w-core-val');
 bindSlider('h-core-slider', params.core1, 'h', 'h-core-val');
 bindSlider('l-core-slider', params.core1, 'l', 'l-core-val');
 
-// Claddings
 bindSlider('w-sub-slider', params.sub, 'w', 'w-sub-val');
 bindSlider('h-sub-slider', params.sub, 'h', 'h-sub-val');
 bindSlider('l-sub-slider', params.sub, 'l', 'l-sub-val');
@@ -359,7 +401,6 @@ bindSlider('w-top-slider', params.top, 'w', 'w-top-val');
 bindSlider('h-top-slider', params.top, 'h', 'h-top-val');
 bindSlider('l-top-slider', params.top, 'l', 'l-top-val');
 
-// Laser Controls
 bindSlider('wavelength-slider', params.laser, 'wavelength', 'wavelength-val');
 bindSlider('rot-x-slider', params.laser, 'rotX', 'rot-x-val');
 bindSlider('rot-y-slider', params.laser, 'rotY', 'rot-y-val');
@@ -369,23 +410,27 @@ bindSlider('intensity-slider', params.laser, 'intensity', 'intensity-val');
 document.getElementById('n-core-slider').addEventListener('input', (e) => {
   params.nCore = parseFloat(e.target.value);
   document.getElementById('n-core-val').textContent = params.nCore;
+  buildStructure();
 });
 
 document.getElementById('n-cladd-slider').addEventListener('input', (e) => {
   params.nCladd = parseFloat(e.target.value);
   document.getElementById('n-cladd-val').textContent = params.nCladd;
+  buildStructure();
 });
 
 window.setCoreMaterial = function(name, nVal) {
   params.nCore = nVal;
   document.getElementById('n-core-slider').value = nVal;
   document.getElementById('n-core-val').textContent = nVal;
+  buildStructure();
 };
 
 window.setCladdMaterial = function(name, nVal) {
   params.nCladd = nVal;
   document.getElementById('n-cladd-slider').value = nVal;
   document.getElementById('n-cladd-val').textContent = nVal;
+  buildStructure();
 };
 
 window.toggleLaserPanel = function() {
@@ -393,7 +438,7 @@ window.toggleLaserPanel = function() {
   panel.style.display = (panel.style.display === 'none' || panel.style.display === '') ? 'block' : 'none';
 };
 
-// 7. 애니메이션 루프 (TE 모드 전자기장 진동 연출)
+// 7. 애니메이션 루프 (입사각에 따른 전자기장 벡터 진동)
 let clock = new THREE.Clock();
 
 function animate() {
@@ -403,6 +448,12 @@ function animate() {
   const omega = 8.0;
   const beta = 10.0;
 
+  // 입사각에 따른 모드 결합 효율 계산 (각도가 커질수록 coupling efficiency 감쇄)
+  const incX = (params.laser.rotX * Math.PI) / 180;
+  const incY = (params.laser.rotY * Math.PI) / 180;
+  const totalAngle = Math.sqrt(incX * incX + incY * incY);
+  const couplingEff = Math.max(0.1, Math.cos(totalAngle * 1.5));
+
   if (laserBeamMat) {
     const pulseFactor = 0.5 + 0.5 * Math.sin(t * omega);
     laserBeamMat.emissiveIntensity = params.laser.intensity * pulseFactor;
@@ -411,31 +462,25 @@ function animate() {
 
   if (guidedRedBeamMat) {
     const intensityFactor = 0.3 + 0.6 * (0.5 + 0.5 * Math.sin(t * omega));
-    guidedRedBeamMat.opacity = intensityFactor * params.laser.intensity;
-    guidedRedBeamMat.emissiveIntensity = 0.5 + 1.2 * intensityFactor;
+    guidedRedBeamMat.opacity = intensityFactor * params.laser.intensity * couplingEff;
+    guidedRedBeamMat.emissiveIntensity = (0.5 + 1.2 * intensityFactor) * couplingEff;
   }
 
-  // TE 모드 전자기장 벡터 애니메이션
+  // 실시간 전자기장 벡터 진동 및 각도 연동
   if (emVectorGroup) {
     emVectorGroup.children.forEach((arrow) => {
       const zPos = arrow.userData.zPos;
       const phase = beta * zPos - omega * t;
       const fieldVal = Math.sin(phase);
 
-      const maxLen = 0.35;
+      const maxLen = 0.35 * couplingEff;
       const currentLen = Math.abs(fieldVal) * maxLen + 0.02;
 
-      if (arrow.userData.type === 'E') {
-        // [TE 모드] E-필드는 진행축(Z)에 직교하는 수평 X축 성분($E_x$)으로만 진동
-        const dirX = fieldVal >= 0 ? 1 : -1;
-        arrow.setDirection(new THREE.Vector3(dirX, 0, 0));
-        arrow.setLength(currentLen, currentLen * 0.3, currentLen * 0.2);
-      } else if (arrow.userData.type === 'H') {
-        // [TE 모드] H-필드는 수직 Y축 성분($H_y$) 및 진행축 성분과 직교
-        const dirY = fieldVal >= 0 ? 1 : -1;
-        arrow.setDirection(new THREE.Vector3(0, dirY, 0));
-        arrow.setLength(currentLen, currentLen * 0.3, currentLen * 0.2);
-      }
+      const baseDir = arrow.userData.dir.clone();
+      const currentDir = fieldVal >= 0 ? baseDir : baseDir.negate();
+
+      arrow.setDirection(currentDir);
+      arrow.setLength(currentLen, currentLen * 0.3, currentLen * 0.2);
     });
   }
 
