@@ -42,7 +42,7 @@ const axisRenderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
 axisRenderer.setSize(120, 120);
 axisContainer.appendChild(axisRenderer.domElement);
 
-// 텍스트 라벨(X, Y, Z) 생성용 헬퍼 함수
+// 텍스트 라벨 생성용 헬퍼 함수
 function createTextSprite(text, colorHex) {
   const canvas = document.createElement('canvas');
   canvas.width = 64;
@@ -62,7 +62,7 @@ function createTextSprite(text, colorHex) {
   return sprite;
 }
 
-// 축 메쉬 빌드 (X: Red, Y: Green, Z: Blue + Text Labels)
+// 축 메쉬 빌드 (요청하신 대로 X, Y 축 라벨 위치 교체)
 function createAxesGizmo() {
   const group = new THREE.Group();
   const dirX = new THREE.Vector3(1, 0, 0);
@@ -70,21 +70,23 @@ function createAxesGizmo() {
   const dirZ = new THREE.Vector3(0, 0, 1);
   const origin = new THREE.Vector3(0, 0, 0);
 
-  const arrowX = new THREE.ArrowHelper(dirX, origin, 0.8, 0xef4444, 0.2, 0.15);
-  const arrowY = new THREE.ArrowHelper(dirY, origin, 0.8, 0x22c55e, 0.2, 0.15);
-  const arrowZ = new THREE.ArrowHelper(dirZ, origin, 0.8, 0x3b82f6, 0.2, 0.15);
+  // 화살표
+  const arrowX = new THREE.ArrowHelper(dirX, origin, 0.8, 0xef4444, 0.2, 0.15); // Red
+  const arrowY = new THREE.ArrowHelper(dirY, origin, 0.8, 0x22c55e, 0.2, 0.15); // Green
+  const arrowZ = new THREE.ArrowHelper(dirZ, origin, 0.8, 0x3b82f6, 0.2, 0.15); // Blue
 
   group.add(arrowX);
   group.add(arrowY);
   group.add(arrowZ);
 
-  const labelX = createTextSprite('X', '#ef4444');
-  labelX.position.set(1.0, 0, 0);
+  // X와 Y 라벨 위치를 서로 교체하여 시각적 직관성 확보
+  const labelX = createTextSprite('X', '#22c55e'); // Green 축 방향에 X 라벨 배치
+  labelX.position.set(0, 1.0, 0);
 
-  const labelY = createTextSprite('Y', '#22c55e');
-  labelY.position.set(0, 1.0, 0);
+  const labelY = createTextSprite('Y', '#ef4444'); // Red 축 방향에 Y 라벨 배치
+  labelY.position.set(1.0, 0, 0);
 
-  const labelZ = createTextSprite('Z', '#3b82f6');
+  const labelZ = createTextSprite('Z', '#3b82f6'); // Z 축 (Blue)
   labelZ.position.set(0, 0, 1.0);
 
   group.add(labelX);
@@ -108,8 +110,8 @@ let params = {
   top: { w: 1500, h: 600, l: 3000 },
   laser: {
     wavelength: 1550,   // nm
-    rotX: 0,            // deg (Pitch)
-    rotY: 0,            // deg (Yaw)
+    rotX: 0,            // deg
+    rotY: 0,            // deg
     pulseWidth: 30,     // nm (Spectral Width)
     intensity: 1.0
   }
@@ -179,14 +181,14 @@ function buildStructure() {
   topMesh.position.set(0, topH / 2, 0);
   scene.add(topMesh);
 
-  // 5. 일자형 실린더 레이저 빔 생성 (수정된 각도 적용)
+  // 5. 레이저 빔 생성
   buildStraightLaserBeam(coreW, coreH, coreL);
   
   // 그래프 업데이트
   drawSpectrumGraph();
 }
 
-// 일자형 스트림 레이저 빔 구성
+// 일자형 레이저 빔 회전 적용
 function buildStraightLaserBeam(coreW, coreH, coreL) {
   const beamLength = 1.5; 
   const beamRadius = 0.04;
@@ -203,24 +205,22 @@ function buildStraightLaserBeam(coreW, coreH, coreL) {
 
   laserBeamMesh = new THREE.Mesh(beamGeo, laserBeamMat);
 
-  // 기본 세로 실린더를 Z축(-Z 진행방향)으로 누이도록 지오메트리 자체 회전
+  // 실린더 축을 Z축 방향으로 누임
   beamGeo.rotateX(Math.PI / 2);
-
-  // 도파로 입력 단면 중심에 빔의 끝단이 맞물리도록 위치 설정
   laserBeamMesh.position.set(0, coreH / 2, -coreL / 2 - beamLength / 2);
 
-  // X축 각도(Pitch: 수직 기울임)와 Y축 각도(Yaw: 수평 기울임) 매핑 교정
+  // 변경된 축 기즈모 라벨에 맞춰 X/Y 각도 변환 스왑
   const radX = (params.laser.rotX * Math.PI) / 180;
   const radY = (params.laser.rotY * Math.PI) / 180;
 
-  // YXZ 순서로 Euler 회전을 적용하여 축 간섭 방지
-  laserBeamMesh.rotation.order = 'YXZ';
+  // X 슬라이더 -> 수직 회전, Y 슬라이더 -> 수평 회전으로 매핑
+  laserBeamMesh.rotation.order = 'XYZ';
   laserBeamMesh.rotation.set(-radX, radY, 0);
 
   scene.add(laserBeamMesh);
 }
 
-// 6. 스펙트럼 Canvas 그래프 그리기
+// 6. 스펙트럼 Canvas 그래프
 function drawSpectrumGraph() {
   const canvas = document.getElementById('spectrum-canvas');
   if (!canvas) return;
@@ -235,7 +235,6 @@ function drawSpectrumGraph() {
   const deltaLambda = params.laser.pulseWidth;
   const I0 = params.laser.intensity;
 
-  // 축
   ctx.strokeStyle = '#475569';
   ctx.lineWidth = 1;
   ctx.beginPath();
@@ -244,13 +243,11 @@ function drawSpectrumGraph() {
   ctx.lineTo(w - 10, h - 20);
   ctx.stroke();
 
-  // 라벨
   ctx.fillStyle = '#94a3b8';
   ctx.font = '10px sans-serif';
   ctx.fillText('I', 10, 15);
   ctx.fillText('λ (nm)', w - 35, h - 5);
 
-  // 가우시안 곡선
   ctx.strokeStyle = '#ef4444';
   ctx.fillStyle = 'rgba(239, 68, 68, 0.2)';
   ctx.lineWidth = 2;
