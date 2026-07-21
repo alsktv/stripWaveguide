@@ -192,27 +192,30 @@ function buildStructure() {
   topMesh.position.set(0, topH / 2, 0);
   scene.add(topMesh);
 
-  // D. 입사 레이저 빔
+  // D. 외부 레이저 빔
   buildStraightLaserBeam(c1W, c1H, c1L);
 
-  // E. 도파로 내부 진행 빔
+  // E. 도파로 내부 가이드 빔
   buildGuidedRedBeam(c1W, c1H, c1L);
 
-  // F. TE 모드 전자기장 화살표 시스템
+  // F. TE 모드 전자기장 화살표
   buildTEFieldVectors(c1W, c1H, c1L);
 
-  // G. 연속적인 빛 진행선
+  // G. 연속적인 파동선
   buildWaveLine(c1W, c1H, c1L);
 
   drawSpectrumGraph();
 }
 
-// 입사 레이저 빔 (외부 - 입사각에 따른 입사점 위치 동적 이동)
+// 입사 레이저 원통 생성 (피봇 중심을 원통의 앞쪽 끝단으로 설정)
 function buildStraightLaserBeam(c1W, c1H, c1L) {
   const beamLength = 1.5; 
   const beamRadius = 0.04;
 
   const beamGeo = new THREE.CylinderGeometry(beamRadius, beamRadius, beamLength, 32);
+  // 피봇 위치를 원통 끝단(Tip)으로 이동
+  beamGeo.translate(0, -beamLength / 2, 0);
+  beamGeo.rotateX(Math.PI / 2); // Z축 진행 방향
   
   laserBeamMat = new THREE.MeshStandardMaterial({
     color: 0xef4444,
@@ -223,12 +226,10 @@ function buildStraightLaserBeam(c1W, c1H, c1L) {
   });
 
   laserBeamMesh = new THREE.Mesh(beamGeo, laserBeamMat);
-  beamGeo.rotateX(Math.PI / 2);
-
   scene.add(laserBeamMesh);
 }
 
-// 도파로 내부 진행 빔
+// 도파로 내부 가이드 빔
 function buildGuidedRedBeam(c1W, c1H, c1L) {
   const beamRadius = Math.min(c1W, c1H) * 0.25;
   const beamGeo = new THREE.CylinderGeometry(beamRadius, beamRadius, c1L, 32);
@@ -262,7 +263,7 @@ function buildTEFieldVectors(c1W, c1H, c1L) {
   scene.add(emVectorGroup);
 }
 
-// 파동 진행선
+// 연속적인 빛 진행 파동선
 function buildWaveLine(c1W, c1H, c1L) {
   const pointCount = 200;
   const geometry = new THREE.BufferGeometry();
@@ -274,14 +275,14 @@ function buildWaveLine(c1W, c1H, c1L) {
     color: 0xef4444,
     linewidth: 2,
     transparent: true,
-    opacity: 0.9
+    opacity: 0.95
   });
 
   waveLineMesh = new THREE.Line(geometry, lineMat);
   scene.add(waveLineMesh);
 }
 
-// 5. 스펙트럼 Canvas 그래프
+// 스펙트럼 Canvas 그래프
 function drawSpectrumGraph() {
   const canvas = document.getElementById('spectrum-canvas');
   if (!canvas) return;
@@ -342,7 +343,7 @@ function drawSpectrumGraph() {
 
 buildStructure();
 
-// 6. 슬라이더 이벤트
+// 슬라이더 바인딩
 function bindSlider(id, targetObj, key, displayId) {
   const slider = document.getElementById(id);
   const display = document.getElementById(displayId);
@@ -403,7 +404,7 @@ window.toggleLaserPanel = function() {
   panel.style.display = (panel.style.display === 'none' || panel.style.display === '') ? 'block' : 'none';
 };
 
-// 7. 실시간 애니메이션 루프 (입사각에 따른 Input Point 역산 및 전파 연동)
+// 7. 메인 실시간 물리 계산 및 애니메이션 루프
 let clock = new THREE.Clock();
 
 function animate() {
@@ -413,119 +414,141 @@ function animate() {
   const omega = 8.0;
   const beta = 12.0;
 
+  const c1W = params.core1.w * SCALE;
   const c1H = params.core1.h * SCALE;
   const c1L = params.core1.l * SCALE;
-  const beamLength = 1.5;
 
-  // 1. 입사각 변환
+  // 1. 입사각 변환 (Deg -> Rad)
   const incX = (params.laser.rotX * Math.PI) / 180;
   const incY = (params.laser.rotY * Math.PI) / 180;
 
-  // 2. 외부 레이저 조준점 역산: 입사각에 따라 외부 원통의 회전축과 위치를 맞추어 레이저 끝단이 입사면에 도달하도록 설정
+  // 도파로 입구 단면($z = -L/2$) 상에서의 오프셋 위치
+  const inputZ = -c1L / 2;
+  const inputX = 0;
+  const inputY = c1H / 2;
+
+  // 2. 레이저 빔 정렬: 레이저 원통의 끝단 중심이 도파로 입구에 오도록 고정
   if (laserBeamMesh) {
+    laserBeamMesh.position.set(inputX, inputY, inputZ);
     laserBeamMesh.rotation.order = 'XYZ';
     laserBeamMesh.rotation.set(-incX, incY, 0);
-
-    // 입사면 z = -c1L / 2 지점을 관통하도록 중심 위치 보정
-    const targetZ = -c1L / 2;
-    const offsetX = (beamLength / 2) * Math.sin(incY);
-    const offsetY = -(beamLength / 2) * Math.sin(incX);
-
-    laserBeamMesh.position.set(
-      offsetX,
-      c1H / 2 + offsetY,
-      targetZ - (beamLength / 2) * Math.cos(incX) * Math.cos(incY)
-    );
   }
 
-  // 3. 스넬의 법칙 굴절각 계산
+  // 3. 물리적 입사각 및 수용각(Acceptance Angle / Numerical Aperture) 계산
   const n1 = params.nCladd;
   const n2 = params.nCore;
 
-  const refrX = Math.asin((n1 / n2) * Math.sin(incX));
-  const refrY = Math.asin((n1 / n2) * Math.sin(incY));
+  // 전반사 임계각 theta_c (도파로 표면 수직 기준) 및 수용각 theta_acc
+  const NA = Math.sqrt(Math.max(0, n2 * n2 - n1 * n1));
+  const maxAcceptanceAngle = Math.asin(Math.min(1.0, NA / n1)); // 수용각 조건
 
-  // 4. K-벡터 및 전자기장 기본 베이스 계산
-  const kDir = new THREE.Vector3(0, 0, 1);
-  kDir.applyEuler(new THREE.Euler(-refrX, refrY, 0, 'XYZ')).normalize();
+  const totalIncAngle = Math.sqrt(incX * incX + incY * incY); // 총 입사각
 
-  const baseE = new THREE.Vector3(1, 0, 0);
-  baseE.applyEuler(new THREE.Euler(-refrX, refrY, 0, 'XYZ')).normalize();
+  // 도파(Guided Mode) 조건 판별: 수용각 이내여야 함
+  const isGuided = totalIncAngle <= maxAcceptanceAngle;
 
-  const baseH = new THREE.Vector3().crossVectors(kDir, baseE).normalize();
+  // 4. 전반사 조건 불만족 시 내부 빛 및 파동 요소 완전 차단 (Invisible)
+  if (!isGuided) {
+    if (guidedRedBeamMesh) guidedRedBeamMesh.visible = false;
+    if (emVectorGroup) emVectorGroup.visible = false;
+    if (waveLineMesh) waveLineMesh.visible = false;
+  } else {
+    if (guidedRedBeamMesh) guidedRedBeamMesh.visible = true;
+    if (emVectorGroup) emVectorGroup.visible = true;
+    if (waveLineMesh) waveLineMesh.visible = true;
 
-  const totalAngle = Math.sqrt(incX * incX + incY * incY);
-  const couplingEff = Math.max(0.1, Math.cos(totalAngle * 1.5));
+    // 5. 스넬의 법칙 굴절각 계산
+    const refrX = Math.asin((n1 / n2) * Math.sin(incX));
+    const refrY = Math.asin((n1 / n2) * Math.sin(incY));
 
-  // 5. 도파로 내부 가이드 빔 회전 및 위치 연동
-  if (guidedRedBeamMesh) {
-    guidedRedBeamMesh.rotation.order = 'XYZ';
-    guidedRedBeamMesh.rotation.set(-refrX, refrY, 0);
-    guidedRedBeamMesh.position.set(0, c1H / 2, 0);
-    
-    const intensityFactor = 0.3 + 0.6 * (0.5 + 0.5 * Math.sin(t * omega));
-    guidedRedBeamMat.opacity = intensityFactor * params.laser.intensity * couplingEff * 0.5;
-    guidedRedBeamMat.emissiveIntensity = (0.5 + 1.2 * intensityFactor) * couplingEff;
-  }
+    // K-vector 및 TE 모드 전자기장 방향 계산
+    const kDir = new THREE.Vector3(0, 0, 1);
+    kDir.applyEuler(new THREE.Euler(-refrX, refrY, 0, 'XYZ')).normalize();
 
-  // 6. 전자기장 화살표 동적 위치 및 회전 반영
-  if (emVectorGroup) {
-    emVectorGroup.children.forEach((arrow) => {
-      const zPos = arrow.userData.zPos;
+    const baseE = new THREE.Vector3(1, 0, 0);
+    baseE.applyEuler(new THREE.Euler(-refrX, refrY, 0, 'XYZ')).normalize();
+
+    const baseH = new THREE.Vector3().crossVectors(kDir, baseE).normalize();
+
+    const couplingEff = Math.cos((totalIncAngle / maxAcceptanceAngle) * (Math.PI / 2));
+
+    // 6. 가이드 빔 갱신
+    if (guidedRedBeamMesh) {
+      guidedRedBeamMesh.rotation.order = 'XYZ';
+      guidedRedBeamMesh.rotation.set(-refrX, refrY, 0);
+      guidedRedBeamMesh.position.set(0, c1H / 2, 0);
       
-      // 굴절각에 따른 중심축 편이 보정
-      const zOffset = zPos - (-c1L / 2);
-      const shiftX = zOffset * Math.tan(refrY);
-      const shiftY = -zOffset * Math.tan(refrX);
-
-      arrow.position.set(shiftX, c1H / 2 + shiftY, zPos);
-
-      const phase = beta * zPos - omega * t;
-      const fieldVal = Math.sin(phase);
-
-      const maxLen = 0.35 * couplingEff;
-      const currentLen = Math.abs(fieldVal) * maxLen + 0.02;
-
-      if (arrow.userData.type === 'E') {
-        const dir = fieldVal >= 0 ? baseE.clone() : baseE.clone().negate();
-        arrow.setDirection(dir);
-        arrow.setLength(currentLen, currentLen * 0.3, currentLen * 0.2);
-      } else if (arrow.userData.type === 'H') {
-        const dir = fieldVal >= 0 ? baseH.clone() : baseH.clone().negate();
-        arrow.setDirection(dir);
-        arrow.setLength(currentLen, currentLen * 0.3, currentLen * 0.2);
-      }
-    });
-  }
-
-  // 7. 연속 파동선 진행 위치 연동
-  if (waveLineMesh) {
-    const positions = waveLineMesh.geometry.attributes.position.array;
-    const pointCount = positions.length / 3;
-    const stepZ = c1L / (pointCount - 1);
-    const amplitude = 0.08 * couplingEff;
-
-    for (let i = 0; i < pointCount; i++) {
-      const zLocal = -c1L / 2 + i * stepZ;
-      const zOffset = i * stepZ;
-      const phase = beta * zLocal - omega * t;
-      
-      const waveOffset = baseE.clone().multiplyScalar(Math.sin(phase) * amplitude);
-      
-      const centerPos = new THREE.Vector3(
-        zOffset * Math.tan(refrY),
-        c1H / 2 - zOffset * Math.tan(refrX),
-        zLocal
-      );
-
-      const finalPos = centerPos.add(waveOffset);
-
-      positions[i * 3]     = finalPos.x;
-      positions[i * 3 + 1] = finalPos.y;
-      positions[i * 3 + 2] = finalPos.z;
+      const intensityFactor = 0.3 + 0.6 * (0.5 + 0.5 * Math.sin(t * omega));
+      guidedRedBeamMat.opacity = intensityFactor * params.laser.intensity * couplingEff * 0.5;
+      guidedRedBeamMat.emissiveIntensity = (0.5 + 1.2 * intensityFactor) * couplingEff;
     }
 
-    waveLineMesh.geometry.attributes.position.needsUpdate = true;
+    // 7. 전자기장 화살표 동적 갱신
+    if (emVectorGroup) {
+      emVectorGroup.children.forEach((arrow) => {
+        const zPos = arrow.userData.zPos;
+        const zOffset = zPos - inputZ;
+        
+        const shiftX = zOffset * Math.tan(refrY);
+        const shiftY = -zOffset * Math.tan(refrX);
+
+        arrow.position.set(inputX + shiftX, inputY + shiftY, zPos);
+
+        const phase = beta * zPos - omega * t;
+        const fieldVal = Math.sin(phase);
+
+        const maxLen = 0.35 * couplingEff;
+        const currentLen = Math.abs(fieldVal) * maxLen + 0.02;
+
+        if (arrow.userData.type === 'E') {
+          const dir = fieldVal >= 0 ? baseE.clone() : baseE.clone().negate();
+          arrow.setDirection(dir);
+          arrow.setLength(currentLen, currentLen * 0.3, currentLen * 0.2);
+        } else if (arrow.userData.type === 'H') {
+          const dir = fieldVal >= 0 ? baseH.clone() : baseH.clone().negate();
+          arrow.setDirection(dir);
+          arrow.setLength(currentLen, currentLen * 0.3, currentLen * 0.2);
+        }
+      });
+    }
+
+    // 8. 레이저 원통의 가장 끝 중심점에서 이어지는 연속 파동선(Red Sine Wave) 갱신
+    if (waveLineMesh) {
+      const positions = waveLineMesh.geometry.attributes.position.array;
+      const pointCount = positions.length / 3;
+      const stepZ = c1L / (pointCount - 1);
+      const amplitude = 0.08 * couplingEff;
+
+      for (let i = 0; i < pointCount; i++) {
+        const zOffset = i * stepZ;
+        const zLocal = inputZ + zOffset;
+        const phase = beta * zLocal - omega * t;
+        
+        const waveOffset = baseE.clone().multiplyScalar(Math.sin(phase) * amplitude);
+        
+        // 레이저 끝단 입사점(inputX, inputY, inputZ)에서 바로 연장
+        const centerPos = new THREE.Vector3(
+          inputX + zOffset * Math.tan(refrY),
+          inputY - zOffset * Math.tan(refrX),
+          zLocal
+        );
+
+        const finalPos = centerPos.add(waveOffset);
+
+        positions[i * 3]     = finalPos.x;
+        positions[i * 3 + 1] = finalPos.y;
+        positions[i * 3 + 2] = finalPos.z;
+      }
+
+      waveLineMesh.geometry.attributes.position.needsUpdate = true;
+    }
+  }
+
+  // 외부 레이저 입력 펄스 애니메이션
+  if (laserBeamMat) {
+    const pulseFactor = 0.5 + 0.5 * Math.sin(t * omega);
+    laserBeamMat.emissiveIntensity = params.laser.intensity * pulseFactor;
+    laserBeamMat.opacity = 0.4 + 0.5 * pulseFactor;
   }
 
   axisGizmo.quaternion.copy(camera.quaternion).invert();
