@@ -44,10 +44,18 @@ function createCrossSectionCanvas() {
 
     const title = document.createElement('div');
     title.style.fontWeight = 'bold';
-    title.style.marginBottom = '8px';
+    title.style.marginBottom = '4px';
     title.style.color = '#38bdf8';
     title.textContent = 'Output Cross-Section |E(x,y)| Intensity';
     panel.appendChild(title);
+
+    const modeInfo = document.createElement('div');
+    modeInfo.id = 'mode-info-text';
+    modeInfo.style.fontSize = '11px';
+    modeInfo.style.marginBottom = '6px';
+    modeInfo.style.color = '#a7f3d0';
+    modeInfo.textContent = 'Active Modes: TE00';
+    panel.appendChild(modeInfo);
 
     const cvs = document.createElement('canvas');
     cvs.id = 'cross-section-canvas';
@@ -76,7 +84,7 @@ const SCALE = 0.001;
 let params = {
   nCore: 3.45,
   nCladd: 1.45,
-  core1: { w: 450, h: 220, l: 3000 },
+  core1: { w: 1200, h: 800, l: 3000 }, // 다중모드 관찰이 용이하도록 기본 코어 사이즈 확대
   sub: { w: 2500, h: 400, l: 3000 },
   top: { w: 2500, h: 600, l: 3000 },
   laser: {
@@ -210,7 +218,7 @@ function drawSpectrumGraph() {
 
 build3DScene();
 
-// 5. 슬라이더 이벤트 바인딩
+// 5. 슬라이더 바인딩
 function bindSlider(id, targetObj, key, displayId) {
   const slider = document.getElementById(id);
   const display = document.getElementById(displayId);
@@ -266,7 +274,7 @@ window.toggleLaserPanel = function() {
   }
 };
 
-// 6. [핵심 수정] 엄밀한 연속 경계 조건 기반 2D 전기장 계산
+// 6. [핵심 구현] 다중 모드(Multimode TE_mn) 지원 2D 전기장 연산
 function drawCrossSectionField(t) {
   const cvs = document.getElementById('cross-section-canvas');
   if (!cvs) return;
@@ -281,7 +289,6 @@ function drawCrossSectionField(t) {
   const incX = (params.laser.rotX * Math.PI) / 180;
   const incY = (params.laser.rotY * Math.PI) / 180;
 
-  // 1. 수용각(Acceptance Angle) 및 TIR 검증
   const NA = Math.sqrt(Math.max(0, n2 * n2 - n1 * n1));
   const maxAcceptanceAngleRad = Math.asin(Math.min(1.0, NA / n1));
   const totalIncAngleRad = Math.sqrt(incX * incX + incY * incY);
@@ -290,45 +297,40 @@ function drawCrossSectionField(t) {
 
   const coreW = params.core1.w; // nm
   const coreH = params.core1.h; // nm
+  const wavelengthNm = params.laser.wavelength;
 
   const imgData = ctx.createImageData(W, H);
   const data = imgData.data;
 
   if (!isGuided) {
     for (let i = 0; i < data.length; i += 4) {
-      data[i] = 15;      // R
-      data[i + 1] = 23;  // G
-      data[i + 2] = 42;  // B
-      data[i + 3] = 255; // A
+      data[i] = 15;      
+      data[i + 1] = 23;  
+      data[i + 2] = 42;  
+      data[i + 3] = 255; 
     }
     ctx.putImageData(imgData, 0, 0);
     drawBoundaryAndLabels(ctx, W, H, coreW, coreH, coreW * 2.4, coreH * 2.4, false);
     return;
   }
 
-  // 2. 굴절 및 파수/감쇠 상수 유도
-  const refrX = Math.asin(Math.min(1.0, (n1 / n2) * Math.sin(incX)));
-  const refrY = Math.asin(Math.min(1.0, (n1 / n2) * Math.sin(incY)));
+  // 1. 규격화 주파수(V-number) 계산 및 허용 최고 모드 차수 유도
+  const Vx = (Math.PI * coreW / wavelengthNm) * NA;
+  const Vy = (Math.PI * coreH / wavelengthNm) * NA;
 
-  const thetaX = Math.PI / 2 - refrY;
-  let deltaPhaseX = 0;
-  if (Math.sin(thetaX) > n1 / n2) {
-    const num = Math.sqrt(n2 * n2 * Math.sin(thetaX) ** 2 - n1 * n1);
-    const den = n2 * Math.cos(thetaX);
-    deltaPhaseX = 2 * Math.atan(num / den);
+  const maxM = Math.max(0, Math.floor((2 * Vx) / Math.PI)); // X축 최고 모드 차수
+  const maxN = Math.max(0, Math.floor((2 * Vy) / Math.PI)); // Y축 최고 모드 차수
+
+  // 패널 상단에 활성화된 최고 모드 표기
+  const modeTextEl = document.getElementById('mode-info-text');
+  if (modeTextEl) {
+    modeTextEl.textContent = `Active Modes: TE00 ~ TE${maxM}${maxN} (Vx:${Vx.toFixed(1)}, Vy:${Vy.toFixed(1)})`;
   }
 
-  const wavelengthNm = params.laser.wavelength;
+  const refrY = Math.asin(Math.min(1.0, (n1 / n2) * Math.sin(incY)));
+  const thetaX = Math.PI / 2 - refrY;
   const dp = (wavelengthNm / (2 * Math.PI)) / Math.sqrt(Math.max(0.001, n2 * n2 * Math.sin(thetaX) ** 2 - n1 * n1));
   const alpha = 1 / (dp * 0.95);
-
-  // [핵심] 경계 연속성을 위한 코어 모드 파수(kx, ky) 설정
-  // 코어 경계(|x|=w/2)에서 cos(kx * w/2) = Eb_x (>0) 가 되도록 횡파수 조정
-  const kx = (Math.PI * 0.72) / coreW;
-  const ky = (Math.PI * 0.72) / coreH;
-
-  const Eb_x = Math.cos(kx * (coreW / 2)); // 경계면에서의 X축 연속 전계값
-  const Eb_y = Math.cos(ky * (coreH / 2)); // 경계면에서의 Y축 연속 전계값
 
   const beta = ((2 * Math.PI) / (wavelengthNm * 1e-9)) * n2 * Math.cos(refrY);
 
@@ -343,35 +345,51 @@ function drawCrossSectionField(t) {
       const absX = Math.abs(x);
       const absY = Math.abs(y);
 
-      let spatialAmplitude = 0;
+      let totalSpatialAmplitude = 0;
+      let totalWeight = 0;
 
-      // [영역 1] 코어 내부 (|x| <= w/2 AND |y| <= h/2)
-      if (absX <= coreW / 2 && absY <= coreH / 2) {
-        spatialAmplitude = Math.cos(kx * x - deltaPhaseX * 0.05) * Math.cos(ky * y);
-      }
-      // [영역 2] X축 방향 클래딩 (|x| > w/2 AND |y| <= h/2)
-      else if (absX > coreW / 2 && absY <= coreH / 2) {
-        const decayX = Eb_x * Math.exp(-alpha * (absX - coreW / 2));
-        spatialAmplitude = decayX * Math.cos(ky * y);
-      }
-      // [영역 3] Y축 방향 클래딩 (|x| <= w/2 AND |y| > h/2)
-      else if (absX <= coreW / 2 && absY > coreH / 2) {
-        const decayY = Eb_y * Math.exp(-alpha * (absY - coreH / 2));
-        spatialAmplitude = Math.cos(kx * x - deltaPhaseX * 0.05) * decayY;
-      }
-      // [영역 4] 4개 모서리 클래딩 영역 (|x| > w/2 AND |y| > h/2)
-      else {
-        // 모서리부터의 2D 유클리드 거리를 이용해 360도 연속 지수 감쇠
-        const cornerDx = absX - coreW / 2;
-        const cornerDy = absY - coreH / 2;
-        const cornerDist = Math.sqrt(cornerDx * cornerDx + cornerDy * cornerDy);
+      // 허용 가능한 모든 TE_mn 모드의 중첩(Superposition) 연산
+      for (let m = 0; m <= maxM; m++) {
+        for (let n = 0; n <= maxN; n++) {
+          // 입사각에 따른 모드 간 가중치(Weight) 분배
+          const weight = Math.exp(-0.3 * (m * Math.abs(incX * 10) + n * Math.abs(incY * 10)));
+          
+          const kx_m = ((m + 1) * Math.PI * 0.72) / coreW;
+          const ky_n = ((n + 1) * Math.PI * 0.72) / coreH;
 
-        spatialAmplitude = (Eb_x * Eb_y) * Math.exp(-alpha * cornerDist);
+          // m, n의 짝수/홀수 여부에 따라 cos/sin 함수 분기 (우수/기수 모드)
+          const modeX_in = (m % 2 === 0) ? Math.cos(kx_m * x) : Math.sin(kx_m * x);
+          const modeY_in = (n % 2 === 0) ? Math.cos(ky_n * y) : Math.sin(ky_n * y);
+
+          const Eb_x = (m % 2 === 0) ? Math.cos(kx_m * (coreW / 2)) : Math.sin(kx_m * (coreW / 2));
+          const Eb_y = (n % 2 === 0) ? Math.cos(ky_n * (coreH / 2)) : Math.sin(ky_n * (coreH / 2));
+
+          let amp_mn = 0;
+
+          if (absX <= coreW / 2 && absY <= coreH / 2) {
+            amp_mn = modeX_in * modeY_in;
+          } else if (absX > coreW / 2 && absY <= coreH / 2) {
+            const decayX = Eb_x * Math.exp(-alpha * (absX - coreW / 2));
+            amp_mn = decayX * modeY_in;
+          } else if (absX <= coreW / 2 && absY > coreH / 2) {
+            const decayY = Eb_y * Math.exp(-alpha * (absY - coreH / 2));
+            amp_mn = modeX_in * decayY;
+          } else {
+            const cornerDx = absX - coreW / 2;
+            const cornerDy = absY - coreH / 2;
+            const cornerDist = Math.sqrt(cornerDx * cornerDx + cornerDy * cornerDy);
+            amp_mn = (Eb_x * Eb_y) * Math.exp(-alpha * cornerDist);
+          }
+
+          totalSpatialAmplitude += weight * amp_mn;
+          totalWeight += weight;
+        }
       }
 
+      const finalAmplitude = totalWeight > 0 ? (totalSpatialAmplitude / totalWeight) : 0;
       const omega = 8.0;
       const phaseZ = beta * (params.core1.l * SCALE) - omega * t;
-      const E_val = Math.abs(params.laser.intensity * spatialAmplitude * Math.sin(phaseZ));
+      const E_val = Math.abs(params.laser.intensity * finalAmplitude * Math.sin(phaseZ));
 
       let r = 0, g = 0, b = 0;
       if (E_val < 0.01) {
