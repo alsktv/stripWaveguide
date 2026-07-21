@@ -274,7 +274,7 @@ window.toggleLaserPanel = function() {
   }
 };
 
-// 6. [핵심 수정] 기수 모드(Odd Mode) 부호 대칭성 보정 적용
+// 6. [수정 완료] Vx 및 Vy가 함께 표시되는 drawCrossSectionField
 function drawCrossSectionField(t) {
   const cvs = document.getElementById('cross-section-canvas');
   if (!cvs) return;
@@ -324,9 +324,10 @@ function drawCrossSectionField(t) {
   const maxM = Math.max(0, Math.floor((2 * Vx) / Math.PI)); 
   const maxN = Math.max(0, Math.floor((2 * Vy) / Math.PI)); 
 
+  // [수정] Vx와 Vy를 함께 표기하도록 텍스트 업데이트
   const modeTextEl = document.getElementById('mode-info-text');
   if (modeTextEl) {
-    modeTextEl.textContent = `Active Modes: TE${maxM}${maxN} (neff:${n_eff_approx.toFixed(2)}, Vx:${Vx.toFixed(2)})`;
+    modeTextEl.textContent = `Active Modes: TE${maxM}${maxN} (neff:${n_eff_approx.toFixed(2)}, Vx:${Vx.toFixed(2)}, Vy:${Vy.toFixed(2)})`;
   }
 
   const refrY = Math.asin(Math.min(1.0, (n1 / n2) * Math.sin(incY)));
@@ -357,15 +358,12 @@ function drawCrossSectionField(t) {
           const kx_m = ((m + 1) * Math.PI * 0.72) / coreW;
           const ky_n = ((n + 1) * Math.PI * 0.72) / coreH;
 
-          // 코어 내부 우수/기수 함수
           const modeX_in = (m % 2 === 0) ? Math.cos(kx_m * x) : Math.sin(kx_m * x);
           const modeY_in = (n % 2 === 0) ? Math.cos(ky_n * y) : Math.sin(ky_n * y);
 
-          // 경계면에서의 전계값
           const Eb_x_raw = (m % 2 === 0) ? Math.cos(kx_m * (coreW / 2)) : Math.sin(kx_m * (coreW / 2));
           const Eb_y_raw = (n % 2 === 0) ? Math.cos(ky_n * (coreH / 2)) : Math.sin(ky_n * (coreH / 2));
 
-          // [핵심] x < 0 또는 y < 0 영역의 부호 대칭성 보정
           const signX = (m % 2 === 1 && x < 0) ? -1 : 1;
           const signY = (n % 2 === 1 && y < 0) ? -1 : 1;
 
