@@ -51,8 +51,8 @@ function createCrossSectionCanvas() {
 
     const cvs = document.createElement('canvas');
     cvs.id = 'cross-section-canvas';
-    cvs.width = 220;
-    cvs.height = 180;
+    cvs.width = 240;
+    cvs.height = 200;
     cvs.style.borderRadius = '4px';
     cvs.style.background = '#020617';
     panel.appendChild(cvs);
@@ -63,7 +63,7 @@ function createCrossSectionCanvas() {
     legend.style.justifyContent = 'space-between';
     legend.style.fontSize = '10px';
     legend.style.color = '#94a3b8';
-    legend.innerHTML = '<span>Weak (Light Blue)</span><span>Strong (Red)</span>';
+    legend.innerHTML = '<span>Weak Evanescent (Blue)</span><span>Strong Core (Red)</span>';
     panel.appendChild(legend);
 
     document.body.appendChild(panel);
@@ -288,28 +288,26 @@ function drawCrossSectionField(t) {
 
   const isGuided = totalIncAngleRad <= maxAcceptanceAngleRad && NA > 0;
 
-  const coreW = params.core1.w;
-  const coreH = params.core1.h;
+  const coreW = params.core1.w; // nm 단위
+  const coreH = params.core1.h; // nm 단위
 
   const imgData = ctx.createImageData(W, H);
   const data = imgData.data;
 
-  // 2. 전반사 미발생(Cutoff) 시: 전기장이 없으므로 검은 화면 및 알림 표시
+  // 2. Cutoff 발생 시
   if (!isGuided) {
     for (let i = 0; i < data.length; i += 4) {
-      data[i] = 2;       // R
-      data[i + 1] = 6;   // G
-      data[i + 2] = 23;  // B
+      data[i] = 15;      // R
+      data[i + 1] = 23;  // G
+      data[i + 2] = 42;  // B
       data[i + 3] = 255; // A
     }
     ctx.putImageData(imgData, 0, 0);
-
-    // Core & Cladding 영역 구분 경계선 그리기
     drawBoundaryAndLabels(ctx, W, H, coreW, coreH, false);
     return;
   }
 
-  // 3. 전반사 발생(Guided) 시 전기장 연산
+  // 3. Guided 상태 - 정밀한 에바네센트 침투 깊이(dp) 계산
   const refrX = Math.asin(Math.min(1.0, (n1 / n2) * Math.sin(incX)));
   const refrY = Math.asin(Math.min(1.0, (n1 / n2) * Math.sin(incY)));
 
@@ -321,15 +319,25 @@ function drawCrossSectionField(t) {
     deltaPhaseX = 2 * Math.atan(num / den);
   }
 
-  const k0 = (2 * Math.PI) / (params.laser.wavelength * 1e-9);
-  const beta = k0 * n2 * Math.cos(refrY);
-  const gammaX = Math.sqrt(Math.max(0, beta * beta - (k0 * n1) ** 2)) * SCALE * 0.8;
-  const gammaY = Math.sqrt(Math.max(0, beta * beta - (k0 * n1) ** 2)) * SCALE * 0.8;
+  // 침투 깊이 dp (nm 단위로 환산)
+  const wavelengthNm = params.laser.wavelength;
+  const dp = (wavelengthNm / (2 * Math.PI)) / Math.sqrt(Math.max(0.001, n2 * n2 * Math.sin(thetaX) ** 2 - n1 * n1));
+  
+  // 에바네센트 감쇠 속도 조절 (화면 크기에 맞춘 감쇠 계수)
+  const alphaX = 1 / (dp * 0.8);
+  const alphaY = 1 / (dp * 0.8);
+
+  const beta = ((2 * Math.PI) / (wavelengthNm * 1e-9)) * n2 * Math.cos(refrY);
+
+  // 화면 관찰 뷰포트 영역 (코어 크기의 2.5배까지 보여줌)
+  const viewW = coreW * 2.5;
+  const viewH = coreH * 2.5;
 
   for (let py = 0; py < H; py++) {
     for (let px = 0; px < W; px++) {
-      const x = ((px - W / 2) / (W / 2)) * (coreW * 1.8);
-      const y = (((H / 2) - py) / (H / 2)) * (coreH * 1.8);
+      // nm 단위의 물리적 상대 좌표 (0,0 이 중심)
+      const x = ((px - W / 2) / W) * viewW;
+      const y = (((H / 2) - py) / H) * viewH;
 
       const absX = Math.abs(x);
       const absY = Math.abs(y);
@@ -337,27 +345,38 @@ function drawCrossSectionField(t) {
       let fieldX = 0;
       let fieldY = 0;
 
+      // X축 전계 (코어 내부 = cos / 클래딩 = exp 에바네센트)
       if (absX <= coreW / 2) {
         fieldX = Math.cos((Math.PI / coreW) * x - deltaPhaseX * 0.1);
       } else {
         const boundaryVal = Math.cos(Math.PI / 2 - deltaPhaseX * 0.1);
-        fieldX = boundaryVal * Math.exp(-gammaX * (absX - coreW / 2));
+        fieldX = boundaryVal * Math.exp(-alphaX * (absX - coreW / 2));
       }
 
+      // Y축 전계 (코어 내부 = cos / 클래딩 = exp 에바네센트)
       if (absY <= coreH / 2) {
         fieldY = Math.cos((Math.PI / coreH) * y);
       } else {
-        fieldY = Math.exp(-gammaY * (absY - coreH / 2));
+        fieldY = Math.exp(-alphaY * (absY - coreH / 2));
       }
 
       const omega = 8.0;
       const phaseZ = beta * (params.core1.l * SCALE) - omega * t;
       const E_val = Math.abs(params.laser.intensity * fieldX * fieldY * Math.sin(phaseZ));
 
-      const hue = (1.0 - Math.min(1.0, E_val)) * 200;
-      const lightness = 40 + E_val * 20;
+      // [핵심] Color Mapping 다듬기: 0일 때 검은 배경, 낮을 때 짙은 파란색, 높을 때 빨간색
+      let r = 0, g = 0, b = 0;
 
-      const [r, g, b] = hslToRgb(hue / 360, 0.9, lightness / 100);
+      if (E_val < 0.02) {
+        // 배경색 (Dark slate)
+        r = 15; g = 23; b = 42;
+      } else {
+        // HSL -> RGB 변환 (E_val: 0.02 ~ 1.0 -> Hue: 220° Blue ~ 0° Red)
+        const normE = Math.min(1.0, (E_val - 0.02) / 0.98);
+        const hue = (1.0 - normE) * 220; // 220(파랑) -> 120(초록) -> 60(노랑) -> 0(빨강)
+        const lightness = 30 + normE * 30; // 30% ~ 60%
+        [r, g, b] = hslToRgb(hue / 360, 0.95, lightness / 100);
+      }
 
       const idx = (py * W + px) * 4;
       data[idx] = r;
@@ -369,36 +388,35 @@ function drawCrossSectionField(t) {
 
   ctx.putImageData(imgData, 0, 0);
 
-  // 4. Core & Cladding 경계선 및 텍스트 라벨 추가
-  drawBoundaryAndLabels(ctx, W, H, coreW, coreH, true);
+  // 4. Core & Cladding 경계선 및 라벨 그리기
+  drawBoundaryAndLabels(ctx, W, H, coreW, coreH, viewW, viewH, isGuided);
 }
 
 // Core & Cladding 시각적 레이아웃 표시 함수
-function drawBoundaryAndLabels(ctx, W, H, coreW, coreH, isGuided) {
-  const corePxW = (coreW / (coreW * 3.6)) * W * 2;
-  const corePxH = (coreH / (coreH * 3.6)) * H * 2;
+function drawBoundaryAndLabels(ctx, W, H, coreW, coreH, viewW, viewH, isGuided) {
+  const corePxW = (coreW / viewW) * W;
+  const corePxH = (coreH / viewH) * H;
   const coreX = (W - corePxW) / 2;
   const coreY = (H - corePxH) / 2;
 
-  // 코어 영역 선명한 점선/실선 박스
-  ctx.strokeStyle = isGuided ? 'rgba(255, 255, 255, 0.8)' : 'rgba(239, 68, 68, 0.6)';
+  // 코어 경계선
+  ctx.strokeStyle = isGuided ? 'rgba(255, 255, 255, 0.85)' : 'rgba(239, 68, 68, 0.6)';
   ctx.lineWidth = 1.5;
   ctx.setLineDash([4, 4]);
   ctx.strokeRect(coreX, coreY, corePxW, corePxH);
-  ctx.setLineDash([]); // 점선 초기화
+  ctx.setLineDash([]);
 
-  // 라벨 텍스트 표기
+  // 라벨 표기
   ctx.font = '10px sans-serif';
   
-  // Cladding 라벨 (외각 상단)
+  // Cladding 라벨
   ctx.fillStyle = '#94a3b8';
-  ctx.fillText('Cladding', 8, 14);
+  ctx.fillText('Cladding (Evanescent Zone)', 8, 14);
 
-  // Core 라벨 (내부 중심)
+  // Core 라벨
   ctx.fillStyle = isGuided ? '#ffffff' : '#f87171';
   ctx.fillText('Core', coreX + 6, coreY + 14);
 
-  // 전반사 조건 실패 시 경고 문구
   if (!isGuided) {
     ctx.fillStyle = '#f87171';
     ctx.font = 'Bold 11px sans-serif';
