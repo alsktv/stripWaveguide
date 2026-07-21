@@ -12,8 +12,15 @@
 
   <div id="canvas-container"></div>
 
-  <!-- 우측 상단 3D 축 나침반 컨테이너 -->
-  <div id="axis-container"></div>
+  <!-- 우측 상단 3D 축 나침반 & 도파로 개수 선택기 -->
+  <div id="top-right-controls">
+    <div id="wg-count-selector">
+      <span class="selector-label">Waveguides:</span>
+      <button id="btn-wg-1" class="btn-toggle-wg active" onclick="setWaveguideCount(1)">1</button>
+      <button id="btn-wg-2" class="btn-toggle-wg" onclick="setWaveguideCount(2)">2</button>
+    </div>
+    <div id="axis-container"></div>
+  </div>
 
   <div id="ui-panel">
     <h2>Strip Waveguide Controls</h2>
@@ -47,19 +54,42 @@
 
     <hr class="divider">
 
-    <!-- 2. Core Dimensions -->
-    <div class="section-title">Core Dimensions (nm)</div>
+    <!-- 2. Core 1 Dimensions -->
+    <div class="section-title">Core 1 Dimensions (nm)</div>
     <div class="control-group">
-      <label>Width (w): <span id="w-core-val">450</span> nm</label>
+      <label>Width ($w_1$): <span id="w-core-val">450</span> nm</label>
       <input type="range" id="w-core-slider" min="200" max="1000" step="10" value="450">
     </div>
     <div class="control-group">
-      <label>Height (h): <span id="h-core-val">220</span> nm</label>
+      <label>Height ($h_1$): <span id="h-core-val">220</span> nm</label>
       <input type="range" id="h-core-slider" min="100" max="600" step="10" value="220">
     </div>
     <div class="control-group">
-      <label>Length (L): <span id="l-core-val">3000</span> nm</label>
+      <label>Length ($L_1$): <span id="l-core-val">3000</span> nm</label>
       <input type="range" id="l-core-slider" min="1000" max="8000" step="100" value="3000">
+    </div>
+
+    <!-- 2-2. Core 2 Dimensions & Gap (Waveguide 2 선택 시 표시) -->
+    <div id="wg2-panel" style="display: none;">
+      <hr class="divider">
+      <div class="section-title" style="color: #f43f5e;">Core 2 & Gap Settings (nm)</div>
+      
+      <div class="control-group">
+        <label>Gap ($g$): <span id="gap-val">200</span> nm</label>
+        <input type="range" id="gap-slider" min="50" max="1000" step="10" value="200">
+      </div>
+      <div class="control-group">
+        <label>Width ($w_2$): <span id="w-core2-val">450</span> nm</label>
+        <input type="range" id="w-core2-slider" min="200" max="1000" step="10" value="450">
+      </div>
+      <div class="control-group">
+        <label>Height ($h_2$): <span id="h-core2-val">220</span> nm</label>
+        <input type="range" id="h-core2-slider" min="100" max="600" step="10" value="220">
+      </div>
+      <div class="control-group">
+        <label>Length ($L_2$): <span id="l-core2-val">3000</span> nm</label>
+        <input type="range" id="l-core2-slider" min="1000" max="8000" step="100" value="3000">
+      </div>
     </div>
 
     <hr class="divider">
@@ -67,8 +97,8 @@
     <!-- 3. Lower Cladding -->
     <div class="section-title">Lower Cladding (BOX) (nm)</div>
     <div class="control-group">
-      <label>Width: <span id="w-sub-val">1500</span> nm</label>
-      <input type="range" id="w-sub-slider" min="500" max="3000" step="50" value="1500">
+      <label>Width: <span id="w-sub-val">2500</span> nm</label>
+      <input type="range" id="w-sub-slider" min="500" max="5000" step="50" value="2500">
     </div>
     <div class="control-group">
       <label>Height: <span id="h-sub-val">400</span> nm</label>
@@ -84,8 +114,8 @@
     <!-- 4. Upper Cladding -->
     <div class="section-title">Upper Cladding (Cover) (nm)</div>
     <div class="control-group">
-      <label>Width: <span id="w-top-val">1500</span> nm</label>
-      <input type="range" id="w-top-slider" min="500" max="3000" step="50" value="1500">
+      <label>Width: <span id="w-top-val">2500</span> nm</label>
+      <input type="range" id="w-top-slider" min="500" max="5000" step="50" value="2500">
     </div>
     <div class="control-group">
       <label>Height: <span id="h-top-val">600</span> nm</label>
@@ -98,7 +128,7 @@
 
     <hr class="divider">
 
-    <!-- 5. Laser Settings & Spectrum Canvas Graph -->
+    <!-- 5. Laser Settings -->
     <button class="btn-toggle" onclick="toggleLaserPanel()">
       Laser Settings & Spectrum ▼
     </button>
@@ -129,7 +159,6 @@
         <input type="range" id="intensity-slider" min="0.1" max="3.0" step="0.1" value="1.0">
       </div>
 
-      <!-- 파장 대비 세기 실시간 그래프 -->
       <div class="sub-title">Spectrum Graph ($I$ vs $\lambda$)</div>
       <div class="graph-box">
         <canvas id="spectrum-canvas" width="260" height="120"></canvas>

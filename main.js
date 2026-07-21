@@ -32,7 +32,7 @@ const gridHelper = new THREE.GridHelper(10, 20, 0x334155, 0x1e293b);
 gridHelper.position.y = -0.5;
 scene.add(gridHelper);
 
-// 2. 우측 상단 XYZ 좌표축(Orientation Axis) Mini-Scene 생성
+// 2. 우측 상단 XYZ 좌표축 Mini-Scene
 const axisContainer = document.getElementById('axis-container');
 const axisScene = new THREE.Scene();
 const axisCamera = new THREE.PerspectiveCamera(50, 1, 0.1, 10);
@@ -42,7 +42,6 @@ const axisRenderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
 axisRenderer.setSize(120, 120);
 axisContainer.appendChild(axisRenderer.domElement);
 
-// 텍스트 라벨 생성용 헬퍼 함수
 function createTextSprite(text, colorHex) {
   const canvas = document.createElement('canvas');
   canvas.width = 64;
@@ -62,7 +61,6 @@ function createTextSprite(text, colorHex) {
   return sprite;
 }
 
-// 축 메쉬 빌드 (요청하신 대로 X, Y 축 라벨 위치 교체)
 function createAxesGizmo() {
   const group = new THREE.Group();
   const dirX = new THREE.Vector3(1, 0, 0);
@@ -70,23 +68,21 @@ function createAxesGizmo() {
   const dirZ = new THREE.Vector3(0, 0, 1);
   const origin = new THREE.Vector3(0, 0, 0);
 
-  // 화살표
-  const arrowX = new THREE.ArrowHelper(dirX, origin, 0.8, 0xef4444, 0.2, 0.15); // Red
-  const arrowY = new THREE.ArrowHelper(dirY, origin, 0.8, 0x22c55e, 0.2, 0.15); // Green
-  const arrowZ = new THREE.ArrowHelper(dirZ, origin, 0.8, 0x3b82f6, 0.2, 0.15); // Blue
+  const arrowX = new THREE.ArrowHelper(dirX, origin, 0.8, 0xef4444, 0.2, 0.15); 
+  const arrowY = new THREE.ArrowHelper(dirY, origin, 0.8, 0x22c55e, 0.2, 0.15); 
+  const arrowZ = new THREE.ArrowHelper(dirZ, origin, 0.8, 0x3b82f6, 0.2, 0.15); 
 
   group.add(arrowX);
   group.add(arrowY);
   group.add(arrowZ);
 
-  // X와 Y 라벨 위치를 서로 교체하여 시각적 직관성 확보
-  const labelX = createTextSprite('X', '#22c55e'); // Green 축 방향에 X 라벨 배치
+  const labelX = createTextSprite('X', '#22c55e');
   labelX.position.set(0, 1.0, 0);
 
-  const labelY = createTextSprite('Y', '#ef4444'); // Red 축 방향에 Y 라벨 배치
+  const labelY = createTextSprite('Y', '#ef4444');
   labelY.position.set(1.0, 0, 0);
 
-  const labelZ = createTextSprite('Z', '#3b82f6'); // Z 축 (Blue)
+  const labelZ = createTextSprite('Z', '#3b82f6');
   labelZ.position.set(0, 0, 1.0);
 
   group.add(labelX);
@@ -103,16 +99,19 @@ axisScene.add(axisGizmo);
 const SCALE = 0.001;
 
 let params = {
+  waveguideCount: 1,  // 도파로 개수 (1 또는 2)
+  gap: 200,           // nm (도파로 1과 2 사이의 간격)
   nCore: 3.45,
   nCladd: 1.45,
-  core: { w: 450, h: 220, l: 3000 },
-  sub: { w: 1500, h: 400, l: 3000 },
-  top: { w: 1500, h: 600, l: 3000 },
+  core1: { w: 450, h: 220, l: 3000 },
+  core2: { w: 450, h: 220, l: 3000 },
+  sub: { w: 2500, h: 400, l: 3000 },
+  top: { w: 2500, h: 600, l: 3000 },
   laser: {
-    wavelength: 1550,   // nm
-    rotX: 0,            // deg
-    rotY: 0,            // deg
-    pulseWidth: 30,     // nm (Spectral Width)
+    wavelength: 1550,
+    rotX: 0,
+    rotY: 0,
+    pulseWidth: 30,
     intensity: 1.0
   }
 };
@@ -123,6 +122,15 @@ const coreMat = new THREE.MeshStandardMaterial({
   roughness: 0.2,
   metalness: 0.8,
   emissive: 0x0284c7,
+  emissiveIntensity: 0.3
+});
+
+// 도파로 2 메쉬용 동일 재질
+const core2Mat = new THREE.MeshStandardMaterial({
+  color: 0xf43f5e, // 도파로 2 시각적 구분을 위한 약간의 로즈 톤 색상
+  roughness: 0.2,
+  metalness: 0.8,
+  emissive: 0xe11d48,
   emissiveIntensity: 0.3
 });
 
@@ -142,20 +150,59 @@ const topMat = new THREE.MeshStandardMaterial({
 
 const wireframeMat = new THREE.LineBasicMaterial({ color: 0xf8fafc, linewidth: 1 });
 
-let coreMesh, subMesh, topMesh, laserBeamMesh, laserBeamMat;
+let core1Mesh, core2Mesh, subMesh, topMesh, laserBeamMesh, laserBeamMat;
 
 // 4. 3D 메쉬 생성
 function buildStructure() {
-  if (coreMesh) { scene.remove(coreMesh); coreMesh.geometry.dispose(); }
+  if (core1Mesh) { scene.remove(core1Mesh); core1Mesh.geometry.dispose(); }
+  if (core2Mesh) { scene.remove(core2Mesh); core2Mesh.geometry.dispose(); }
   if (subMesh) { scene.remove(subMesh); subMesh.geometry.dispose(); }
   if (topMesh) { scene.remove(topMesh); topMesh.geometry.dispose(); }
   if (laserBeamMesh) { scene.remove(laserBeamMesh); laserBeamMesh.geometry.dispose(); }
 
-  const coreW = params.core.w * SCALE;
-  const coreH = params.core.h * SCALE;
-  const coreL = params.core.l * SCALE;
+  const c1W = params.core1.w * SCALE;
+  const c1H = params.core1.h * SCALE;
+  const c1L = params.core1.l * SCALE;
 
-  // Substrate
+  const gap = params.gap * SCALE;
+
+  // 도파로 위치 계산 (도파로 1은 왼쪽, 도파로 2는 오른쪽 배치)
+  let posX1 = 0;
+  let posX2 = 0;
+
+  if (params.waveguideCount === 2) {
+    const c2W = params.core2.w * SCALE;
+    // 두 코어 중심간의 거리 = w1/2 + gap + w2/2
+    const totalSpan = c1W + gap + c2W;
+    posX1 = -(totalSpan / 2) + (c1W / 2);
+    posX2 = (totalSpan / 2) - (c2W / 2);
+  }
+
+  // A. Core 1
+  const core1Geo = new THREE.BoxGeometry(c1W, c1H, c1L);
+  core1Mesh = new THREE.Mesh(core1Geo, coreMat);
+  core1Mesh.position.set(posX1, c1H / 2, 0);
+
+  const wfGeo1 = new THREE.EdgesGeometry(core1Geo);
+  core1Mesh.add(new THREE.LineSegments(wfGeo1, wireframeMat));
+  scene.add(core1Mesh);
+
+  // B. Core 2 (도파로 2개 모드일 경우 동일한 Y 평면 상에 독립적 크기로 배치)
+  if (params.waveguideCount === 2) {
+    const c2W = params.core2.w * SCALE;
+    const c2H = params.core2.h * SCALE;
+    const c2L = params.core2.l * SCALE;
+
+    const core2Geo = new THREE.BoxGeometry(c2W, c2H, c2L);
+    core2Mesh = new THREE.Mesh(core2Geo, core2Mat);
+    core2Mesh.position.set(posX2, c2H / 2, 0);
+
+    const wfGeo2 = new THREE.EdgesGeometry(core2Geo);
+    core2Mesh.add(new THREE.LineSegments(wfGeo2, wireframeMat));
+    scene.add(core2Mesh);
+  }
+
+  // C. Substrate
   const subW = params.sub.w * SCALE;
   const subH = params.sub.h * SCALE;
   const subL = params.sub.l * SCALE;
@@ -163,17 +210,7 @@ function buildStructure() {
   subMesh.position.set(0, -subH / 2, 0);
   scene.add(subMesh);
 
-  // Core
-  const coreGeo = new THREE.BoxGeometry(coreW, coreH, coreL);
-  coreMesh = new THREE.Mesh(coreGeo, coreMat);
-  coreMesh.position.set(0, coreH / 2, 0);
-
-  const wireframeGeo = new THREE.EdgesGeometry(coreGeo);
-  const wireframe = new THREE.LineSegments(wireframeGeo, wireframeMat);
-  coreMesh.add(wireframe);
-  scene.add(coreMesh);
-
-  // Upper Cladding
+  // D. Upper Cladding
   const topW = params.top.w * SCALE;
   const topH = params.top.h * SCALE;
   const topL = params.top.l * SCALE;
@@ -181,15 +218,14 @@ function buildStructure() {
   topMesh.position.set(0, topH / 2, 0);
   scene.add(topMesh);
 
-  // 5. 레이저 빔 생성
-  buildStraightLaserBeam(coreW, coreH, coreL);
+  // E. 레이저 빔 (항상 도파로 1의 입구 중앙에 조사)
+  buildStraightLaserBeam(c1W, c1H, c1L, posX1);
   
-  // 그래프 업데이트
   drawSpectrumGraph();
 }
 
-// 일자형 레이저 빔 회전 적용
-function buildStraightLaserBeam(coreW, coreH, coreL) {
+// 레이저 빔 생성 (도파로 1의 입구에 조준)
+function buildStraightLaserBeam(c1W, c1H, c1L, posX1) {
   const beamLength = 1.5; 
   const beamRadius = 0.04;
 
@@ -205,22 +241,19 @@ function buildStraightLaserBeam(coreW, coreH, coreL) {
 
   laserBeamMesh = new THREE.Mesh(beamGeo, laserBeamMat);
 
-  // 실린더 축을 Z축 방향으로 누임
   beamGeo.rotateX(Math.PI / 2);
-  laserBeamMesh.position.set(0, coreH / 2, -coreL / 2 - beamLength / 2);
+  laserBeamMesh.position.set(posX1, c1H / 2, -c1L / 2 - beamLength / 2);
 
-  // 변경된 축 기즈모 라벨에 맞춰 X/Y 각도 변환 스왑
   const radX = (params.laser.rotX * Math.PI) / 180;
   const radY = (params.laser.rotY * Math.PI) / 180;
 
-  // X 슬라이더 -> 수직 회전, Y 슬라이더 -> 수평 회전으로 매핑
   laserBeamMesh.rotation.order = 'XYZ';
   laserBeamMesh.rotation.set(-radX, radY, 0);
 
   scene.add(laserBeamMesh);
 }
 
-// 6. 스펙트럼 Canvas 그래프
+// 5. 스펙트럼 Canvas 그래프
 function drawSpectrumGraph() {
   const canvas = document.getElementById('spectrum-canvas');
   if (!canvas) return;
@@ -281,6 +314,27 @@ function drawSpectrumGraph() {
 
 buildStructure();
 
+// 6. 도파로 개수 변경 토글 함수
+window.setWaveguideCount = function(count) {
+  params.waveguideCount = count;
+
+  const btn1 = document.getElementById('btn-wg-1');
+  const btn2 = document.getElementById('btn-wg-2');
+  const wg2Panel = document.getElementById('wg2-panel');
+
+  if (count === 1) {
+    btn1.classList.add('active');
+    btn2.classList.remove('active');
+    wg2Panel.style.display = 'none';
+  } else {
+    btn2.classList.add('active');
+    btn1.classList.remove('active');
+    wg2Panel.style.display = 'block';
+  }
+
+  buildStructure();
+};
+
 // 7. 슬라이더 이벤트
 function bindSlider(id, targetObj, key, displayId) {
   const slider = document.getElementById(id);
@@ -293,10 +347,18 @@ function bindSlider(id, targetObj, key, displayId) {
   });
 }
 
-bindSlider('w-core-slider', params.core, 'w', 'w-core-val');
-bindSlider('h-core-slider', params.core, 'h', 'h-core-val');
-bindSlider('l-core-slider', params.core, 'l', 'l-core-val');
+// Core 1
+bindSlider('w-core-slider', params.core1, 'w', 'w-core-val');
+bindSlider('h-core-slider', params.core1, 'h', 'h-core-val');
+bindSlider('l-core-slider', params.core1, 'l', 'l-core-val');
 
+// Core 2 & Gap
+bindSlider('gap-slider', params, 'gap', 'gap-val');
+bindSlider('w-core2-slider', params.core2, 'w', 'w-core2-val');
+bindSlider('h-core2-slider', params.core2, 'h', 'h-core2-val');
+bindSlider('l-core2-slider', params.core2, 'l', 'l-core2-val');
+
+// Claddings
 bindSlider('w-sub-slider', params.sub, 'w', 'w-sub-val');
 bindSlider('h-sub-slider', params.sub, 'h', 'h-sub-val');
 bindSlider('l-sub-slider', params.sub, 'l', 'l-sub-val');
@@ -305,6 +367,7 @@ bindSlider('w-top-slider', params.top, 'w', 'w-top-val');
 bindSlider('h-top-slider', params.top, 'h', 'h-top-val');
 bindSlider('l-top-slider', params.top, 'l', 'l-top-val');
 
+// Laser Controls
 bindSlider('wavelength-slider', params.laser, 'wavelength', 'wavelength-val');
 bindSlider('rot-x-slider', params.laser, 'rotX', 'rot-x-val');
 bindSlider('rot-y-slider', params.laser, 'rotY', 'rot-y-val');
