@@ -42,7 +42,27 @@ const axisRenderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
 axisRenderer.setSize(120, 120);
 axisContainer.appendChild(axisRenderer.domElement);
 
-// 축 메쉬 빌드 (X: Red, Y: Green, Z: Blue)
+// 텍스트 라벨(X, Y, Z) 생성용 헬퍼 함수 (Canvas -> Texture -> Sprite)
+function createTextSprite(text, colorHex) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 64;
+  canvas.height = 64;
+  const ctx = canvas.getContext('2d');
+
+  ctx.font = 'Bold 44px sans-serif';
+  ctx.fillStyle = colorHex;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, 32, 32);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  const spriteMaterial = new THREE.SpriteMaterial({ map: texture, depthTest: false });
+  const sprite = new THREE.Sprite(spriteMaterial);
+  sprite.scale.set(0.35, 0.35, 1);
+  return sprite;
+}
+
+// 축 메쉬 빌드 (X: Red, Y: Green, Z: Blue + Text Labels)
 function createAxesGizmo() {
   const group = new THREE.Group();
   const dirX = new THREE.Vector3(1, 0, 0);
@@ -57,6 +77,21 @@ function createAxesGizmo() {
   group.add(arrowX);
   group.add(arrowY);
   group.add(arrowZ);
+
+  // X, Y, Z 글자 라벨 추가
+  const labelX = createTextSprite('X', '#ef4444');
+  labelX.position.set(1.0, 0, 0);
+
+  const labelY = createTextSprite('Y', '#22c55e');
+  labelY.position.set(0, 1.0, 0);
+
+  const labelZ = createTextSprite('Z', '#3b82f6');
+  labelZ.position.set(0, 0, 1.0);
+
+  group.add(labelX);
+  group.add(labelY);
+  group.add(labelZ);
+
   return group;
 }
 
@@ -155,7 +190,7 @@ function buildStructure() {
 
 // 일자형 스트림 레이저 빔 구성
 function buildStraightLaserBeam(coreW, coreH, coreL) {
-  const beamLength = 1.5; // 입사 빔 길이어
+  const beamLength = 1.5; // 입사 빔 길이
   const beamRadius = 0.04;
 
   const beamGeo = new THREE.CylinderGeometry(beamRadius, beamRadius, beamLength, 32);
