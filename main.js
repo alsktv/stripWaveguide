@@ -151,7 +151,7 @@ const guidedRedBeamMat = new THREE.MeshStandardMaterial({
 let core1Mesh, subMesh, topMesh, laserBeamMesh, laserBeamMat;
 let guidedRedBeamMesh; 
 let emVectorGroup;
-let waveLineMesh; // 연속적인 빛 진행선
+let waveLineMesh;
 
 // 4. 3D 메쉬 생성
 function buildStructure() {
@@ -193,7 +193,7 @@ function buildStructure() {
   scene.add(topMesh);
 
   // D. 입사 레이저 빔
-  buildStraightLaserBeam(c1W, c1H, c1L, 0);
+  buildStraightLaserBeam(c1W, c1H, c1L);
 
   // E. 도파로 내부 진행 빔
   buildGuidedRedBeam(c1W, c1H, c1L);
@@ -201,14 +201,14 @@ function buildStructure() {
   // F. TE 모드 전자기장 화살표 시스템
   buildTEFieldVectors(c1W, c1H, c1L);
 
-  // G. 연속적인 빛 진행선 (Wave Line)
+  // G. 연속적인 빛 진행선
   buildWaveLine(c1W, c1H, c1L);
 
   drawSpectrumGraph();
 }
 
-// 입사 레이저 빔 (외부)
-function buildStraightLaserBeam(c1W, c1H, c1L, posX1) {
+// 입사 레이저 빔 (외부 - 입사각에 따른 입사점 위치 동적 이동)
+function buildStraightLaserBeam(c1W, c1H, c1L) {
   const beamLength = 1.5; 
   const beamRadius = 0.04;
 
@@ -223,27 +223,18 @@ function buildStraightLaserBeam(c1W, c1H, c1L, posX1) {
   });
 
   laserBeamMesh = new THREE.Mesh(beamGeo, laserBeamMat);
-
   beamGeo.rotateX(Math.PI / 2);
-  laserBeamMesh.position.set(posX1, c1H / 2, -c1L / 2 - beamLength / 2);
-
-  const radX = (params.laser.rotX * Math.PI) / 180;
-  const radY = (params.laser.rotY * Math.PI) / 180;
-
-  laserBeamMesh.rotation.order = 'XYZ';
-  laserBeamMesh.rotation.set(-radX, radY, 0);
 
   scene.add(laserBeamMesh);
 }
 
-// 도파로 내부 진행 빔 (가이드)
+// 도파로 내부 진행 빔
 function buildGuidedRedBeam(c1W, c1H, c1L) {
   const beamRadius = Math.min(c1W, c1H) * 0.25;
   const beamGeo = new THREE.CylinderGeometry(beamRadius, beamRadius, c1L, 32);
   beamGeo.rotateX(Math.PI / 2);
 
   guidedRedBeamMesh = new THREE.Mesh(beamGeo, guidedRedBeamMat);
-  guidedRedBeamMesh.position.set(0, c1H / 2, 0);
   scene.add(guidedRedBeamMesh);
 }
 
@@ -271,7 +262,7 @@ function buildTEFieldVectors(c1W, c1H, c1L) {
   scene.add(emVectorGroup);
 }
 
-// 연속적인 파동 진행선 (Red Sine Wave Trace)
+// 파동 진행선
 function buildWaveLine(c1W, c1H, c1L) {
   const pointCount = 200;
   const geometry = new THREE.BufferGeometry();
@@ -412,7 +403,7 @@ window.toggleLaserPanel = function() {
   panel.style.display = (panel.style.display === 'none' || panel.style.display === '') ? 'block' : 'none';
 };
 
-// 7. 실시간 애니메이션 루프 (입사각에 따른 전자기장 및 연속 파동선 동적 재계산)
+// 7. 실시간 애니메이션 루프 (입사각에 따른 Input Point 역산 및 전파 연동)
 let clock = new THREE.Clock();
 
 function animate() {
@@ -424,22 +415,40 @@ function animate() {
 
   const c1H = params.core1.h * SCALE;
   const c1L = params.core1.l * SCALE;
+  const beamLength = 1.5;
 
-  // 1. 실시간 스넬의 법칙 굴절각 계산
-  const n1 = params.nCladd;
-  const n2 = params.nCore;
-
+  // 1. 입사각 변환
   const incX = (params.laser.rotX * Math.PI) / 180;
   const incY = (params.laser.rotY * Math.PI) / 180;
+
+  // 2. 외부 레이저 조준점 역산: 입사각에 따라 외부 원통의 회전축과 위치를 맞추어 레이저 끝단이 입사면에 도달하도록 설정
+  if (laserBeamMesh) {
+    laserBeamMesh.rotation.order = 'XYZ';
+    laserBeamMesh.rotation.set(-incX, incY, 0);
+
+    // 입사면 z = -c1L / 2 지점을 관통하도록 중심 위치 보정
+    const targetZ = -c1L / 2;
+    const offsetX = (beamLength / 2) * Math.sin(incY);
+    const offsetY = -(beamLength / 2) * Math.sin(incX);
+
+    laserBeamMesh.position.set(
+      offsetX,
+      c1H / 2 + offsetY,
+      targetZ - (beamLength / 2) * Math.cos(incX) * Math.cos(incY)
+    );
+  }
+
+  // 3. 스넬의 법칙 굴절각 계산
+  const n1 = params.nCladd;
+  const n2 = params.nCore;
 
   const refrX = Math.asin((n1 / n2) * Math.sin(incX));
   const refrY = Math.asin((n1 / n2) * Math.sin(incY));
 
-  // 2. 굴절된 진행 방향 파수 벡터 K 계산
+  // 4. K-벡터 및 전자기장 기본 베이스 계산
   const kDir = new THREE.Vector3(0, 0, 1);
   kDir.applyEuler(new THREE.Euler(-refrX, refrY, 0, 'XYZ')).normalize();
 
-  // TE 모드: 전기장 E는 수평 평면 성분, 자기장 H는 E와 K에 모두 수직
   const baseE = new THREE.Vector3(1, 0, 0);
   baseE.applyEuler(new THREE.Euler(-refrX, refrY, 0, 'XYZ')).normalize();
 
@@ -448,20 +457,29 @@ function animate() {
   const totalAngle = Math.sqrt(incX * incX + incY * incY);
   const couplingEff = Math.max(0.1, Math.cos(totalAngle * 1.5));
 
-  // 3. 내부 진행 가이드 빔 회전 각도 실시간 갱신
+  // 5. 도파로 내부 가이드 빔 회전 및 위치 연동
   if (guidedRedBeamMesh) {
     guidedRedBeamMesh.rotation.order = 'XYZ';
     guidedRedBeamMesh.rotation.set(-refrX, refrY, 0);
+    guidedRedBeamMesh.position.set(0, c1H / 2, 0);
     
     const intensityFactor = 0.3 + 0.6 * (0.5 + 0.5 * Math.sin(t * omega));
     guidedRedBeamMat.opacity = intensityFactor * params.laser.intensity * couplingEff * 0.5;
     guidedRedBeamMat.emissiveIntensity = (0.5 + 1.2 * intensityFactor) * couplingEff;
   }
 
-  // 4. 실시간 전자기장 화살표 위치 및 방향 갱신 (각도 변경 즉시 반영)
+  // 6. 전자기장 화살표 동적 위치 및 회전 반영
   if (emVectorGroup) {
     emVectorGroup.children.forEach((arrow) => {
       const zPos = arrow.userData.zPos;
+      
+      // 굴절각에 따른 중심축 편이 보정
+      const zOffset = zPos - (-c1L / 2);
+      const shiftX = zOffset * Math.tan(refrY);
+      const shiftY = -zOffset * Math.tan(refrX);
+
+      arrow.position.set(shiftX, c1H / 2 + shiftY, zPos);
+
       const phase = beta * zPos - omega * t;
       const fieldVal = Math.sin(phase);
 
@@ -480,7 +498,7 @@ function animate() {
     });
   }
 
-  // 5. 연속적인 빛 진행 파동선 (Red Sine Wave Trace) 실시간 그리기
+  // 7. 연속 파동선 진행 위치 연동
   if (waveLineMesh) {
     const positions = waveLineMesh.geometry.attributes.position.array;
     const pointCount = positions.length / 3;
@@ -489,20 +507,18 @@ function animate() {
 
     for (let i = 0; i < pointCount; i++) {
       const zLocal = -c1L / 2 + i * stepZ;
+      const zOffset = i * stepZ;
       const phase = beta * zLocal - omega * t;
       
-      // TE 모드 파동: E-필드 진동 방향(baseE)으로 연속 진동
       const waveOffset = baseE.clone().multiplyScalar(Math.sin(phase) * amplitude);
       
-      // 중심 전파 경로 (K 방향 진행)
-      const centerPos = new THREE.Vector3(0, c1H / 2, zLocal);
-      const perpOffset = new THREE.Vector3(
-        zLocal * Math.tan(refrY),
-        -zLocal * Math.tan(refrX),
-        0
+      const centerPos = new THREE.Vector3(
+        zOffset * Math.tan(refrY),
+        c1H / 2 - zOffset * Math.tan(refrX),
+        zLocal
       );
 
-      const finalPos = centerPos.add(perpOffset).add(waveOffset);
+      const finalPos = centerPos.add(waveOffset);
 
       positions[i * 3]     = finalPos.x;
       positions[i * 3 + 1] = finalPos.y;
