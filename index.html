@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Strip Waveguide 3D Simulator</title>
   <link rel="stylesheet" href="style.css">
-  <!-- Three.js 및 OrbitControls CDN -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 </head>
@@ -13,40 +12,85 @@
 
   <div id="canvas-container"></div>
 
-  <!-- 컨트롤 & 정보 패널 -->
   <div id="ui-panel">
-    <h2>Strip Waveguide 3D</h2>
+    <h2>Strip Waveguide Controls</h2>
+
+    <!-- 1. Refractive Index & Presets -->
+    <div class="section-title">Refractive Index (n)</div>
     
-    <div class="control-group">
-      <label for="width-slider">
-        Core Width (w): <span id="width-val">450</span> nm
-      </label>
-      <input type="range" id="width-slider" min="200" max="1000" step="10" value="450">
+    <div class="preset-group">
+      <span class="preset-label">Core Presets:</span>
+      <button class="btn-preset" onclick="setCoreMaterial('Si', 3.45)">Si (3.45)</button>
+      <button class="btn-preset" onclick="setCoreMaterial('SiN', 2.00)">SiN (2.00)</button>
+      <button class="btn-preset" onclick="setCoreMaterial('Polymer', 1.50)">Polymer (1.50)</button>
+    </div>
+
+    <div class="preset-group">
+      <span class="preset-label">Cladding Presets:</span>
+      <button class="btn-preset" onclick="setCladdMaterial('SiO2', 1.45)">SiO₂ (1.45)</button>
+      <button class="btn-preset" onclick="setCladdMaterial('Air', 1.00)">Air (1.00)</button>
+      <button class="btn-preset" onclick="setCladdMaterial('Polymer', 1.50)">Polymer (1.50)</button>
     </div>
 
     <div class="control-group">
-      <label for="height-slider">
-        Core Height (h): <span id="height-val">220</span> nm
-      </label>
-      <input type="range" id="height-slider" min="100" max="500" step="10" value="220">
+      <label>Core n: <span id="n-core-val">3.45</span></label>
+      <input type="range" id="n-core-slider" min="1.0" max="4.0" step="0.01" value="3.45">
     </div>
 
     <div class="control-group">
-      <label for="length-slider">
-        Core Length (L): <span id="length-val">3000</span> nm
-      </label>
-      <input type="range" id="length-slider" min="1000" max="8000" step="100" value="3000">
+      <label>Cladding n: <span id="n-cladd-val">1.45</span></label>
+      <input type="range" id="n-cladd-slider" min="1.0" max="3.0" step="0.01" value="1.45">
     </div>
 
-    <div class="legend">
-      <div class="legend-item">
-        <div class="color-box" style="background: #38bdf8;"></div>
-        <span>Silicon Core (n ≈ 3.45)</span>
-      </div>
-      <div class="legend-item">
-        <div class="color-box" style="background: rgba(148, 163, 184, 0.4);"></div>
-        <span>SiO₂ Substrate / BOX (n ≈ 1.45)</span>
-      </div>
+    <hr class="divider">
+
+    <!-- 2. Core Dimensions -->
+    <div class="section-title">Core Dimensions (nm)</div>
+    <div class="control-group">
+      <label>Width (w): <span id="w-core-val">450</span> nm</label>
+      <input type="range" id="w-core-slider" min="200" max="1000" step="10" value="450">
+    </div>
+    <div class="control-group">
+      <label>Height (h): <span id="h-core-val">220</span> nm</label>
+      <input type="range" id="h-core-slider" min="100" max="600" step="10" value="220">
+    </div>
+    <div class="control-group">
+      <label>Length (L): <span id="l-core-val">3000</span> nm</label>
+      <input type="range" id="l-core-slider" min="1000" max="8000" step="100" value="3000">
+    </div>
+
+    <hr class="divider">
+
+    <!-- 3. Lower Cladding (Substrate) Dimensions -->
+    <div class="section-title">Lower Cladding (BOX) (nm)</div>
+    <div class="control-group">
+      <label>Width: <span id="w-sub-val">1500</span> nm</label>
+      <input type="range" id="w-sub-slider" min="500" max="3000" step="50" value="1500">
+    </div>
+    <div class="control-group">
+      <label>Height: <span id="h-sub-val">400</span> nm</label>
+      <input type="range" id="h-sub-slider" min="100" max="1000" step="20" value="400">
+    </div>
+    <div class="control-group">
+      <label>Length: <span id="l-sub-val">3000</span> nm</label>
+      <input type="range" id="l-sub-slider" min="1000" max="8000" step="100" value="3000">
+    </div>
+
+    <hr class="divider">
+
+    <!-- 4. Upper Cladding Dimensions -->
+    <div class="section-title">Upper Cladding (Cover) (nm)</div>
+    <div class="control-group">
+      <label>Width: <span id="w-top-val">1500</span> nm</label>
+      <input type="range" id="w-top-slider" min="500" max="3000" step="50" value="1500">
+    </div>
+    <div class="control-group">
+      <label>Height: <span id="h-top-val">400</span> nm</label>
+      <input type="range" id="h-top-slider" min="100" max="1000" step="20" value="400">
+    </div>
+    <div class="control-group">
+      <label>Length: <span id="l-top-val">3000</span> nm</label>
+      <input type="range" id="l-top-slider" min="1000" max="8000" step="100" value="3000">
     </div>
   </div>
 
