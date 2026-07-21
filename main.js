@@ -79,7 +79,7 @@ function createCrossSectionCanvas() {
 }
 createCrossSectionCanvas();
 
-// 3. 파라미터 관리 (기본값: 표준 Silicon Photonics 450x220nm)
+// 3. 파라미터 관리
 const SCALE = 0.001;
 let params = {
   nCore: 3.45,
@@ -274,7 +274,7 @@ window.toggleLaserPanel = function() {
   }
 };
 
-// 6. [핵심 수정] 유효 굴절률(n_eff_approx) 기반 2D 전기장 연산
+// 6. [핵심 수정] 기수 모드(Odd Mode) 부호 대칭성 보정 적용
 function drawCrossSectionField(t) {
   const cvs = document.getElementById('cross-section-canvas');
   if (!cvs) return;
@@ -293,16 +293,12 @@ function drawCrossSectionField(t) {
   const coreH = params.core1.h; // nm
   const wavelengthNm = params.laser.wavelength;
 
-  // [유효 굴절률 보정 로직]
-  // 수직 두께(h)에 따른 confinement factor Gamma_y 수치 근사
+  // 유효 굴절률 보정
   const rawNA = Math.sqrt(Math.max(0, n2 * n2 - n1 * n1));
   const gammaY = Math.min(1.0, coreH / (coreH + (wavelengthNm / (Math.PI * (rawNA || 1)))));
-  
-  // 유효 굴절률 n_eff 및 유효 NA_eff 연산
   const n_eff_approx = Math.sqrt(n1 * n1 + gammaY * (n2 * n2 - n1 * n1));
   const NA_eff = Math.sqrt(Math.max(0, n_eff_approx * n_eff_approx - n1 * n1));
 
-  // 수용각 및 전반사 유효 조건 판별
   const maxAcceptanceAngleRad = Math.asin(Math.min(1.0, NA_eff / n1));
   const totalIncAngleRad = Math.sqrt(incX * incX + incY * incY);
   const isGuided = totalIncAngleRad <= maxAcceptanceAngleRad && NA_eff > 0;
@@ -322,11 +318,9 @@ function drawCrossSectionField(t) {
     return;
   }
 
-  // 유효 NA 기반 V-number 산출
   const Vx = (Math.PI * coreW / wavelengthNm) * NA_eff;
   const Vy = (Math.PI * coreH / wavelengthNm) * NA_eff;
 
-  // 허용 최고 모드 차수 (Vx, Vy <= pi/2 이면 0 -> TE00 단일모드)
   const maxM = Math.max(0, Math.floor((2 * Vx) / Math.PI)); 
   const maxN = Math.max(0, Math.floor((2 * Vy) / Math.PI)); 
 
@@ -363,11 +357,20 @@ function drawCrossSectionField(t) {
           const kx_m = ((m + 1) * Math.PI * 0.72) / coreW;
           const ky_n = ((n + 1) * Math.PI * 0.72) / coreH;
 
+          // 코어 내부 우수/기수 함수
           const modeX_in = (m % 2 === 0) ? Math.cos(kx_m * x) : Math.sin(kx_m * x);
           const modeY_in = (n % 2 === 0) ? Math.cos(ky_n * y) : Math.sin(ky_n * y);
 
-          const Eb_x = (m % 2 === 0) ? Math.cos(kx_m * (coreW / 2)) : Math.sin(kx_m * (coreW / 2));
-          const Eb_y = (n % 2 === 0) ? Math.cos(ky_n * (coreH / 2)) : Math.sin(ky_n * (coreH / 2));
+          // 경계면에서의 전계값
+          const Eb_x_raw = (m % 2 === 0) ? Math.cos(kx_m * (coreW / 2)) : Math.sin(kx_m * (coreW / 2));
+          const Eb_y_raw = (n % 2 === 0) ? Math.cos(ky_n * (coreH / 2)) : Math.sin(ky_n * (coreH / 2));
+
+          // [핵심] x < 0 또는 y < 0 영역의 부호 대칭성 보정
+          const signX = (m % 2 === 1 && x < 0) ? -1 : 1;
+          const signY = (n % 2 === 1 && y < 0) ? -1 : 1;
+
+          const Eb_x = signX * Eb_x_raw;
+          const Eb_y = signY * Eb_y_raw;
 
           let amp_mn = 0;
 
