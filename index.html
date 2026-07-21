@@ -78,19 +78,28 @@
 
     <hr class="divider">
 
-    <!-- 4. Upper Cladding Dimensions -->
-    <div class="section-title">Upper Cladding (Cover) (nm)</div>
+    <!-- 4. Upper Cladding Dimensions (Surrounding Core) -->
+    <div class="section-title">Upper Cladding (Enclosing) (nm)</div>
     <div class="control-group">
       <label>Width: <span id="w-top-val">1500</span> nm</label>
       <input type="range" id="w-top-slider" min="500" max="3000" step="50" value="1500">
     </div>
     <div class="control-group">
-      <label>Height: <span id="h-top-val">400</span> nm</label>
-      <input type="range" id="h-top-slider" min="100" max="1000" step="20" value="400">
+      <label>Height: <span id="h-top-val">600</span> nm</label>
+      <input type="range" id="h-top-slider" min="100" max="1500" step="20" value="600">
     </div>
     <div class="control-group">
       <label>Length: <span id="l-top-val">3000</span> nm</label>
       <input type="range" id="l-top-slider" min="1000" max="8000" step="100" value="3000">
+    </div>
+
+    <hr class="divider">
+
+    <!-- 5. Input Laser Settings -->
+    <div class="section-title">Input Laser Source</div>
+    <div class="control-group">
+      <label>Wavelength ($\lambda$): <span id="wavelength-val">1550</span> nm</label>
+      <input type="range" id="wavelength-slider" min="850" max="1650" step="10" value="1550">
     </div>
   </div>
 
