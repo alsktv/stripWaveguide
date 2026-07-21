@@ -422,7 +422,7 @@ window.toggleLaserPanel = function() {
   panel.style.display = (panel.style.display === 'none' || panel.style.display === '') ? 'block' : 'none';
 };
 
-// 8. 실시간 애니메이션 및 전반사/모드 계산 루프
+// 8. 애니메이션 및 전반사/각도 부호 정정 계산 루프
 let clock = new THREE.Clock();
 
 function animate() {
@@ -443,6 +443,7 @@ function animate() {
   const inputX = 0;
   const inputY = c1H / 2;
 
+  // 레이저 메쉬 회전 정렬 (-incX 사용)
   if (laserBeamMesh) {
     laserBeamMesh.position.set(inputX, inputY, inputZ);
     laserBeamMesh.rotation.order = 'XYZ';
@@ -451,9 +452,8 @@ function animate() {
 
   const n1 = params.nCladd;
   const n2 = params.nCore;
-  const lam0_um = params.laser.wavelength / 1000; // nm -> um
 
-  // 개구수(NA) 및 수용각(Acceptance Angle) 계산
+  // NA 및 수용각
   const NA = Math.sqrt(Math.max(0, n2 * n2 - n1 * n1));
   const maxAcceptanceAngleRad = Math.asin(Math.min(1.0, NA / n1));
   const maxAcceptanceAngleDeg = (maxAcceptanceAngleRad * 180) / Math.PI;
@@ -461,14 +461,11 @@ function animate() {
   const totalIncAngleRad = Math.sqrt(incX * incX + incY * incY);
   const totalIncAngleDeg = (totalIncAngleRad * 180) / Math.PI;
 
-  // 가로/세로 모드 차수(m, n) 계산
   const mMax = Math.max(0, Math.floor((2 * params.core1.w / params.laser.wavelength) * NA));
   const nMax = Math.max(0, Math.floor((2 * params.core1.h / params.laser.wavelength) * NA));
 
-  // 전반사 조건 검증: 입사각이 수용각 이내여야 함
   const isGuided = totalIncAngleRad <= maxAcceptanceAngleRad && NA > 0;
 
-  // UI 상태 업데이트
   if (isGuided) {
     modeOverlay.innerHTML = `
       <div style="color: #38bdf8; font-weight: bold; margin-bottom: 4px;">Propagation Status: <span style="color: #4ade80;">GUIDED (TIR Active)</span></div>
@@ -483,7 +480,6 @@ function animate() {
     `;
   }
 
-  // 전반사가 일어나지 않을 때: 모든 내부 시각화 요소 완전 차단 및 데이터 초기화
   if (!isGuided) {
     if (guidedRedBeamMesh) guidedRedBeamMesh.visible = false;
     if (emVectorGroup) emVectorGroup.visible = false;
@@ -499,14 +495,16 @@ function animate() {
     if (emVectorGroup) emVectorGroup.visible = true;
     if (waveLineMesh) waveLineMesh.visible = true;
 
+    // 스넬의 법칙 굴절각 계산
     const refrX = Math.asin((n1 / n2) * Math.sin(incX));
     const refrY = Math.asin((n1 / n2) * Math.sin(incY));
 
+    // [부호 수정 핵심] 레이저 회전각(-incX)과 연동되도록 내부 전파 기하각을 +refrX로 바르게 반영
     const kDir = new THREE.Vector3(0, 0, 1);
-    kDir.applyEuler(new THREE.Euler(-refrX, refrY, 0, 'XYZ')).normalize();
+    kDir.applyEuler(new THREE.Euler(refrX, refrY, 0, 'XYZ')).normalize();
 
     const baseE = new THREE.Vector3(1, 0, 0);
-    baseE.applyEuler(new THREE.Euler(-refrX, refrY, 0, 'XYZ')).normalize();
+    baseE.applyEuler(new THREE.Euler(refrX, refrY, 0, 'XYZ')).normalize();
 
     const baseH = new THREE.Vector3().crossVectors(kDir, baseE).normalize();
 
@@ -514,7 +512,7 @@ function animate() {
 
     if (guidedRedBeamMesh) {
       guidedRedBeamMesh.rotation.order = 'XYZ';
-      guidedRedBeamMesh.rotation.set(-refrX, refrY, 0);
+      guidedRedBeamMesh.rotation.set(refrX, refrY, 0);
       guidedRedBeamMesh.position.set(0, c1H / 2, 0);
       
       const intensityFactor = 0.3 + 0.6 * (0.5 + 0.5 * Math.sin(t * omega));
@@ -527,8 +525,9 @@ function animate() {
         const zPos = arrow.userData.zPos;
         const zOffset = zPos - inputZ;
         
+        // [부호 수정] rotX가 음수(위쪽 입사)일 때 shiftY도 양수(+Y, 위쪽)로 바르게 진행
         const shiftX = zOffset * Math.tan(refrY);
-        const shiftY = -zOffset * Math.tan(refrX);
+        const shiftY = zOffset * Math.tan(refrX);
 
         arrow.position.set(inputX + shiftX, inputY + shiftY, zPos);
 
@@ -563,9 +562,10 @@ function animate() {
         
         const waveOffset = baseE.clone().multiplyScalar(Math.sin(phase) * amplitude);
         
+        // [부호 수정] Y축 오프셋을 +zOffset * Math.tan(refrX)로 보정하여 입사각과 완벽히 방향 일치
         const centerPos = new THREE.Vector3(
           inputX + zOffset * Math.tan(refrY),
-          inputY - zOffset * Math.tan(refrX),
+          inputY + zOffset * Math.tan(refrX),
           zLocal
         );
 
