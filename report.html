@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Real-time 3D Waveguide & Directional Coupler Simulator Physics Model</title>
+  
+  <!-- LaTeX 수식 렌더링용 MathJax v3 -->
+  <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+  <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+  <script>
+    window.MathJax = {
+      tex: { inlineMath: [['$', '$'], ['\\(', '\\)']] }
+    };
+  </script>
+
+  <style>
+    @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css');
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, Roboto, sans-serif;
+      line-height: 1.65;
+      color: #1e293b;
+      background-color: #f8fafc;
+      padding: 40px 20px;
+    }
+
+    .paper-container {
+      max-width: 850px;
+      margin: 0 auto;
+      background: #ffffff;
+      padding: 60px 50px;
+      border-radius: 8px;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.05);
+      border: 1px solid #e2e8f0;
+    }
+
+    @media print {
+      body {
+        background-color: #ffffff;
+        padding: 0;
+      }
+      .paper-container {
+        box-shadow: none;
+        border: none;
+        padding: 0;
+        max-width: 100%;
+      }
+      .no-print {
+        display: none !important;
+      }
+      h2 {
+        page-break-before: always;
+      }
+      .first-page-h2 {
+        page-break-before: avoid;
+      }
+    }
+
+    .print-btn-wrapper {
+      text-align: right;
+      margin-bottom: 20px;
+    }
+
+    .btn-print {
+      background: #0284c7;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 6px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      box-shadow: 0 4px 6px -1px rgba(2, 132, 199, 0.3);
+      transition: all 0.2s;
+    }
+
+    .btn-print:hover {
+      background: #0369a1;
+    }
+
+    .doc-title {
+      font-size: 1.8rem;
+      font-weight: 800;
+      color: #0f172a;
+      border-bottom: 3px solid #0284c7;
+      padding-bottom: 12px;
+      margin-bottom: 8px;
+    }
+
+    .doc-subtitle {
+      font-size: 1.05rem;
+      color: #64748b;
+      margin-bottom: 24px;
+      font-weight: 500;
+    }
+
+    .doc-meta {
+      display: flex;
+      justify-content: space-between;
+      background: #f1f5f9;
+      padding: 12px 18px;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      color: #475569;
+      margin-bottom: 35px;
+    }
+
+    h2 {
+      font-size: 1.35rem;
+      color: #0f172a;
+      margin-top: 36px;
+      margin-bottom: 14px;
+      border-left: 4px solid #0284c7;
+      padding-left: 10px;
+    }
+
+    h3 {
+      font-size: 1.05rem;
+      color: #1e293b;
+      margin-top: 22px;
+      margin-bottom: 8px;
+    }
+
+    p {
+      margin-bottom: 12px;
+      font-size: 0.95rem;
+      color: #334155;
+      text-align: justify;
+    }
+
+    ul, ol {
+      margin-left: 20px;
+      margin-bottom: 14px;
+      font-size: 0.95rem;
+      color: #334155;
+    }
+
+    li {
+      margin-bottom: 4px;
+    }
+
+    .math-box {
+      background-color: #f8fafc;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      padding: 14px 20px;
+      margin: 16px 0;
+      overflow-x: auto;
+      text-align: center;
+    }
+
+    .note-box {
+      background-color: #eff6ff;
+      border-left: 4px solid #3b82f6;
+      padding: 12px 16px;
+      margin: 16px 0;
+      border-radius: 0 6px 6px 0;
+      font-size: 0.9rem;
+      color: #1e40af;
+    }
+
+    .footer {
+      margin-top: 50px;
+      padding-top: 15px;
+      border-top: 1px solid #e2e8f0;
+      text-align: center;
+      font-size: 0.8rem;
+      color: #94a3b8;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="paper-container">
+    <div class="print-btn-wrapper no-print">
+      <button class="btn-print" onclick="window.print()">📄 PDF 저장 / 인쇄</button>
+    </div>
+
+    <div class="doc-title">실시간 3D 도파로 및 방향성 결합기 시뮬레이터 물리 모델 보고서</div>
+    <div class="doc-subtitle">유효 굴절률법(EIM), 결합 모드 이론(CMT) 및 슈퍼모드 전계 중첩 해석</div>
+
+    <div class="doc-meta">
+      <span><strong>프로젝트:</strong> WebGL/Three.js 기반 3D Strip Waveguide Simulator</span>
+      <span><strong>구현 모델:</strong> Asymmetric Coupler & Supermode Physics</span>
+    </div>
+
+    <h2 class="first-page-h2">1. 서론 (Introduction)</h2>
+    <p>
+      본 보고서는 WebGL 기반의 실시간 3D 광도파로 시뮬레이터에 적용된 전자기학적 파동 전파 수식과 모드 결합 원리를 정리한 기술 문서이다.
+      웹 브라우저 상에서 60 FPS 이상의 고속 연산을 유지함과 동시에 광학적 정밀도를 확보하기 위해 1차원 <strong>유효 굴절률법(Effective Index Method, EIM)</strong> 및 <strong>결합 모드 이론(Coupled Mode Theory, CMT)</strong>을 확장 적용하였다.
+    </p>
+
+    <h2>2. 단일 광도파로 도파 모드 해석 (Single Core Propagation)</h2>
+    <p>
+      직사각형 단면($w \times h$)을 갖는 Strip Waveguide의 3D 공간 제약(Confinement)을 수학적으로 모델링하기 위해 분리 변수법 및 유효 굴절률 보정을 수행한다.
+    </p>
+
+    <h3>2.1. 유효 굴절률 보정 ($n_{\text{eff}}$)</h3>
+    <p>
+      코어의 굴절률 $n_{\text{core}}$, 클래딩 굴절률 $n_{\text{cladd}}$, 사용파장 $\lambda_0$ 및 코어 높이 $h$에 따른 수직 방향 제한 효율 $\gamma_y$를 근사하여 유효 굴절률 $n_{\text{eff}}$를 다음과 같이 정의한다.
+    </p>
+    
+    <div class="math-box">
+      $$\text{NA}_{\text{raw}} = \sqrt{\max(0, n_{\text{core}}^2 - n_{\text{cladd}}^2)}$$
+      $$\gamma_y = \min\left(1.0, \frac{h}{h + \frac{\lambda_0}{\pi \cdot \text{NA}_{\text{raw}}}}\right)$$
+      $$n_{\text{eff}} = \sqrt{n_{\text{cladd}}^2 + \gamma_y (n_{\text{core}}^2 - n_{\text{cladd}}^2)}$$
+    </div>
+
+    <h3>2.2. $V$-parameter 및 차단 모드 ($TE_{mn}$) 결정</h3>
+    <p>
+      코어 폭 $w$에 대한 유효 $V$-parameter를 구하고, 이에 따라 안내될 수 있는 수평/수직 고차 모드 개수($M_{\text{max}}, N_{\text{max}}$)를 결정한다.
+    </p>
+    
+    <div class="math-box">
+      $$V_x = \frac{\pi w}{\lambda_0} \sqrt{n_{\text{eff}}^2 - n_{\text{cladd}}^2}, \quad V_y = \frac{\pi h}{\lambda_0} \sqrt{n_{\text{eff}}^2 - n_{\text{cladd}}^2}$$
+      $$M_{\text{max}} = \left\lfloor \frac{2 V_x}{\pi} \right\rfloor, \quad N_{\text{max}} = \left\lfloor \frac{2 V_y}{\pi} \right\rfloor$$
+    </div>
+
+    <h3>2.3. 에바네센트 꼬리(Evanescent Tail) 및 기함수 부호 대칭성 보정</h3>
+    <p>
+      코어 외부($|x| > w/2$)에서의 전계 소멸 계수 $\alpha$는 침투 깊이 $d_p$의 역수로 산출된다.
+      기수 모드(Odd Mode: $m = 1, 3, \dots$)에서 코어 경계면 불연속성을 방지하기 위해 Sign-Symmetry를 보정한다.
+    </p>
+    
+    <div class="math-box">
+      $$\alpha = \frac{1}{d_p}, \quad d_p = \frac{\lambda_0}{2\pi \sqrt{n_{\text{eff}}^2 \sin^2 \theta_x - n_{\text{cladd}}^2}}$$
+      $$E_{mn}(x,y) \propto \begin{cases} 
+      \cos\left(\frac{(m+1)\pi}{w} x\right) \cdot \cos\left(\frac{(n+1)\pi}{h} y\right) & (|x| \le \frac{w}{2}, |y| \le \frac{h}{2}) \\
+      \operatorname{sign}(x)^m \cdot E_{\text{boundary}} \cdot \exp\left(-\alpha \left(|x| - \frac{w}{2}\right)\right) & (|x| > \frac{w}{2})
+      \end{cases}$$
+    </div>
+
+    <h2>3. 이중 광도파로 비대칭 방향성 결합기 (Directional Coupler)</h2>
+    <p>
+      두 개의 코어(Core 1, Core 2)가 간격 $g$를 두고 근접해 있을 때, evanescent field의 중첩에 의해 에너지가 주기적으로 이동하는 결합 현상을 <strong>CMT (Coupled Mode Theory)</strong>로 모델링한다.
+    </p>
+
+    <h3>3.1. 전파 상수 차이 ($\Delta \beta$) 및 결합 계수 ($\kappa$)</h3>
+    <p>
+      Core 1과 Core 2의 굴절률($n_1, n_2$) 및 치수가 다를 경우 발생하는 전파 상수 위상 불일치 $\Delta \beta$와 비대칭 결합 인수 $S$는 다음과 같다.
+    </p>
+
+    <div class="math-box">
+      $$\beta_1 = \frac{2\pi}{\lambda_0} n_{\text{eff}, 1}, \quad \beta_2 = \frac{2\pi}{\lambda_0} n_{\text{eff}, 2}$$
+      $$\Delta \beta = |\beta_1 - \beta_2|, \quad \kappa = \kappa_0 \exp\left(-\frac{g}{1.2 d_p}\right)$$
+      $$S = \sqrt{\kappa^2 + \left(\frac{\Delta \beta}{2}\right)^2}$$
+    </div>
+
+    <h3>3.2. 슈퍼모드(Even/Odd Supermode) 전계 중첩 및 이동 수식</h3>
+    <p>
+      빛이 $z=0$ 지점에서 Core 1로 들어올 때, 길이 $z$ 지점에서의 각 코어 전계 진폭 $A_1(z)$ 및 $A_2(z)$는 복합 슈퍼모드 간섭 패턴에 의해 계산된다.
+    </p>
+
+    <div class="math-box">
+      $$A_1(z) = \cos(S \cdot z)$$
+      $$A_2(z) = \frac{\kappa}{S} \sin(S \cdot z)$$
+    </div>
+
+    <div class="note-box">
+      <strong>💡 물리적 해석:</strong> 대칭 구조($n_1 = n_2 \Rightarrow \Delta \beta = 0$)일 때 $S = \kappa$가 되어 완전 전력 이전($100\%$ Power Transfer)이 일어난다. 반면, $n_1 \neq n_2$ 인 비대칭 구조에서는 전력 이전율이 $(\kappa/S)^2 < 1$ 로 제한된다.
+    </div>
+
+    <h2>4. 최종 3D/2D 전기장 시각화 함수 ($E_{\text{total}}$)</h2>
+    <p>
+      단면 2D 히트맵 및 3D 그래픽에 실시간 표현되는 시간-공간 전기장 분포 $E_{\text{total}}(x,y,z,t)$의 최종 종합식은 다음과 같다.
+    </p>
+
+    <div class="math-box">
+      $$E_{\text{total}}(x,y,z,t) = \left[ A_1(z) \cdot E_1(x - x_1, y) + A_2(z) \cdot E_2(x - x_2, y) \right] \cdot \sin(\beta_1 z - \omega t)$$
+    </div>
+
+    <h2>5. 결론 및 연산 효율성</h2>
+    <ul>
+      <li><strong>실시간 성능:</strong> 픽셀 단위 2D 캔버스 연산 시 루프 분기를 최소화하여 60 FPS 프레임 유지.</li>
+      <li><strong>시각적 연속성:</strong> 기수 모드 부호 보정을 통해 코어-클래딩 경계면 경계 조건 만족 및 아티팩트 제거 완료.</li>
+    </ul>
+
+    <div class="footer">
+      Generated for Optical Waveguide Simulator Technical Documentation • Printable Web Report Page
+    </div>
+  </div>
+
+</body>
+</html>
