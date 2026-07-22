@@ -176,7 +176,7 @@
       color: #14532d;
     }
 
-    /* Comparison Table Styling */
+    /* Comparison Table & Glossary Table Styling */
     .table-container {
       margin: 20px 0;
       overflow-x: auto;
@@ -192,6 +192,7 @@
     th, td {
       padding: 10px 14px;
       border: 1px solid #e2e8f0;
+      vertical-align: middle;
     }
 
     th {
@@ -293,7 +294,7 @@
     
     <h3>3.1. 유효 굴절률법(EIM) 근사 과정 및 타당성</h3>
     <p>
-      **[근사 방식]** 3차원 직사각형 단면($w \times h$)을 가로($x$)와 세로($y$) 방향의 독립된 1차원 슬래브(Slab) 도파로 2개로 분리하여 해석한다.
+      **[근사 방식]** 3차원 직사각형 단면($w \times h$)을 가로($x$)와 세로($y$) 방향의 독립된 1차원 플래너(슬래브) 도파로 2개로 분리하여 해석한다.
       수직 방향($y$)의 전계 제한 비율 $\gamma_y$를 수치 근사한 후, 이를 반영하여 $x$ 방향의 1차원 유효 굴절률 $n_{\text{eff}}$를 유도한다.
     </p>
     
@@ -306,7 +307,7 @@
     <div class="validity-box">
       <strong>✔ 근사의 타당성 (Validity & Justification):</strong><br>
       Strip Waveguide는 종횡비($w/h$)가 극단적이지 않은 경우 $x$축과 $y$축의 파동 모드가 직교에 가깝다. 
-      상기 근사는 Marcatili's Method의 1차 확장으로, 엄밀 FDTD 계산 결과 대비 유효 굴절률 오차가 $1\sim 3\%$ 이내로 매우 적어 실시간파동 기하 구조를 시각화하는 데 충분한 학술적 타당성을 제공한다.
+      상기 근사는 Marcatili's Method의 1차 확장으로, 엄밀 FDTD 계산 결과 대비 유효 굴절률 오차가 $1\sim 3\%$ 이내로 매우 적어 실시간 파동 기하 구조를 시각화하는 데 충분한 학술적 타당성을 제공한다.
     </div>
 
     <h3>3.2. $V$-parameter 기반 모드 수($TE_{mn}$) 결정 메커니즘</h3>
@@ -363,7 +364,7 @@
       </ul>
     </div>
 
-    <h2>5. 최종 전계 합성 및 연산 최적화 결론</h2>
+    <h2>5. 최종 2D/3D 전계 합성 함수 및 용어 설명 (Glossary)</h2>
     <p>
       최종 단면 전계 분포 $E_{\text{total}}$은 각 코어의 공간 모드 전계 $E_1, E_2$와 CMT 결합 진폭 $A_1, A_2$의 선형 중첩(Linear Superposition)으로 완성된다.
     </p>
@@ -372,6 +373,61 @@
       $$E_{\text{total}}(x,y,z,t) = \left[ A_1(z) \cdot E_1(x - x_1, y) + A_2(z) \cdot E_2(x - x_2, y) \right] \cdot \sin(\beta_1 z - \omega t)$$
     </div>
 
+    <h3>5.1. 수식 기호 및 물리 변수 상세 설명 (Glossary)</h3>
+    <p>
+      상기 수식 및 시뮬레이터 모델에 사용된 주요 기호의 물리적 의미와 역할은 다음과 같다.
+    </p>
+
+    <div class="table-container">
+      <table>
+        <thead>
+          <tr>
+            <th style="width: 22%;">기호 / 용어</th>
+            <th style="width: 33%;">물리적 의미</th>
+            <th style="width: 45%;">상세 설명 및 역할</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>$x_1, x_2$</strong><br>(코어 중심 좌표)</td>
+            <td>Core 1 및 Core 2의<br><strong>X축 중심 위치 (nm)</strong></td>
+            <td>전체 좌표계에서 Core 1 중심을 $x_1$, Core 2 중심을 $x_2$라 할 때, $(x - x_1)$과 $(x - x_2)$는 각 코어의 고유 전계 모양($E_1, E_2$)을 자신의 실제 물리적 위치로 평행이동시켜 주는 좌표 변환항이다. (두 코어 중심 사이 거리는 $x_2 - x_1 = \frac{w_1 + w_2}{2} + g$)</td>
+          </tr>
+          <tr>
+            <td><strong>$E_1, E_2$</strong><br>(모드 프로파일)</td>
+            <td>단일 도파로 고유의<br><strong>2D 횡단면 전계 분포</strong></td>
+            <td>진행 방향($z$)과 수직인 $x,y$ 평면상에서 빛의 밝기 분포 모양. 코어 내부에서는 정현파($\cos$), 클래딩에서는 감쇠 지수함수($\exp$) 형태를 가진다.</td>
+          </tr>
+          <tr>
+            <td><strong>$A_1(z), A_2(z)$</strong><br>(CMT 결합 진폭)</td>
+            <td>진행 거리 $z$에 따른<br><strong>코어별 전계 진폭 가중치</strong></td>
+            <td>$z=0$에서 Core 1로 들어온 빛이 진행함에 따라 두 코어에 분배되는 빛의 세기 비율. $\cos(Sz)$ 및 $\sin(Sz)$ 수식에 의해 $z$축을 따라 교대로 진동한다.</td>
+          </tr>
+          <tr>
+            <td><strong>$\beta_1, \beta_2$</strong><br>(전파 상수)</td>
+            <td>진행 방향($z$)의<br><strong>공간 위상 변화율 ($\text{rad/nm}$)</strong></td>
+            <td>$\beta = \frac{2\pi}{\lambda_0} n_{\text{eff}}$ 로 정의된다. 빛이 $z$ 방향으로 1 nm 나아갈 때 위상이 몇 라디안(rad) 변하는지를 나타내는 파동의 공간 주파수이다.</td>
+          </tr>
+          <tr>
+            <td><strong>$\omega$</strong><br>(각주파수)</td>
+            <td>시간에 따른<br><strong>빛의 진동 속도 ($\text{rad/s}$)</strong></td>
+            <td>$\omega = 2\pi f = \frac{2\pi c}{\lambda_0}$ 로 정의된다. 빛 전자기장이 시간에 따라 1초에 몇 라디안 진동하는지를 나타내며, 시뮬레이션에서는 빛이 출렁이며 진행하는 애니메이션을 만들어낸다.</td>
+          </tr>
+          <tr>
+            <td><strong>$\Delta \beta$</strong><br>(위상 불일치)</td>
+            <td>두 도파로 간의<br><strong>전파 상수 차이 ($|\beta_1 - \beta_2|$)</strong></td>
+            <td>두 코어의 굴절률이나 치수가 달라서 발생하는 위상 속도 차이. $\Delta \beta$가 커질수록 두 도파로 간의 전력 전달 효율이 떨어진다.</td>
+          </tr>
+          <tr>
+            <td><strong>$\kappa$</strong><br>(결합 계수)</td>
+            <td>두 도파로 간의<br><strong>빛 상호작용 강도 ($\text{nm}^{-1}$)</strong></td>
+            <td>코어 간격 $g$가 좁을수록 Evanescent Tail의 중첩이 커져 $\kappa$가 증가하며, 이에 따라 두 코어 사이에 에너지가 더 빠르게 이동한다.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h2>6. 결론</h2>
     <ul>
       <li><strong>결론:</strong> FDTD 대비 연산량을 $99.9\%$ 이상 감축하면서도 핵심 파동 현상(Evanescent Coupling, Mode Beat, Odd Mode Correction)을 오차 범위 내에서 실시간(60 FPS) 렌더링하도록 구현 완료하였다.</li>
     </ul>
